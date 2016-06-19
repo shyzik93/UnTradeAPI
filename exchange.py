@@ -32,7 +32,8 @@ class proAPI:
       return r.text, False, [error]
 
 class Price():
-  def __init__(self):
+  def __init__(self, pair):
+    self.pair = pair
     self.sell = None
     self.buy = None
     self.glass_buy = None
@@ -60,6 +61,8 @@ class exchange_exmo(proAPI):
     else: return None, False, errors
 
   def price(self, pair, glass_limit=10):
+    price = Price(pair)
+
     pair = pair.replace('-', '_').upper()
     data, success, errors = self.do.order_book(pair=pair, limit=glass_limit)
     if success:
@@ -69,7 +72,6 @@ class exchange_exmo(proAPI):
 
     if not success: return data, success, errors
 
-    price = Price(pair)
     price.sell = data['ask_top']
     price.buy = data['bid_top']
     price.glass_sell = data['ask']
@@ -111,6 +113,8 @@ class exchange_btce(proAPI):
     else: return None, False, errors
 
   def price(self, pair=None):
+    price = Price(pair)
+
     pair = pair.replace('-', '_')
     data, success, errors = self.do.ticker(pairs=[pair])
     if success:
@@ -120,7 +124,6 @@ class exchange_btce(proAPI):
 
     if not success: return data, success, errors
 
-    price = Price(pair)
     price.sell = data['sell']
     price.buy = data['buy']
 
