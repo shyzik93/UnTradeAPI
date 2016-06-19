@@ -5,7 +5,6 @@
 # Date: 25.07.2014   18.08.2015   06.11.2015, 18.06.2016
 
 import json, hmac, hashlib, os, time
-import urllib
 from urllib import request, parse
 
 import requests
