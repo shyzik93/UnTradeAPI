@@ -1,8 +1,6 @@
-# coding: utf-8
-# Author: Konstantin Polyakov
-# E-mail: kostyan_93@mail.ru
 # -*- coding: utf-8 -*-
-# Date: 25.07.2014   18.08.2015   06.11.2015, 18.06.2016
+# Author: Konstantin Polyakov
+# Date: 25.07.2014, 18.08.2015, 06.11.2015, 18.06.2016
 
 import json, hmac, hashlib, os, time
 from urllib import request, parse
