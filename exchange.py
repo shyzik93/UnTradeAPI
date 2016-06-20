@@ -29,12 +29,13 @@ class proAPI:
       return r.text, False, [error]
 
 class Price():
-  def __init__(self, pair):
+  def __init__(self, pair, buy, sell):
     self.pair = pair
-    self.sell = None
-    self.buy = None
+    self.buy = float(buy)
+    self.sell = float(sell)
     self.glass_buy = None
     self.glass_sell = None
+  def spread(self): return self.buy - self.sell
 
 class exchange_exmo(proAPI):
   exmo_url = "https://api.exmo.com/v1/"
@@ -58,7 +59,7 @@ class exchange_exmo(proAPI):
     else: return None, False, errors
 
   def price(self, pair, glass_limit=10):
-    price = Price(pair)
+    univ_pair = pair
 
     pair = pair.replace('-', '_').upper()
     data, success, errors = self.do.order_book(pair=pair, limit=glass_limit)
@@ -69,10 +70,9 @@ class exchange_exmo(proAPI):
 
     if not success: return data, success, errors
 
-    price.sell = data['ask_top']
-    price.buy = data['bid_top']
-    price.glass_sell = data['ask']
-    price.glass_buy = data['bid']
+    price = Price(univ_pair, data['ask_top'], data['bid_top'])
+    price.glass_sell = data['bid']
+    price.glass_buy = data['ask']
 
     return price, success, errors
 
@@ -110,7 +110,7 @@ class exchange_btce(proAPI):
     else: return None, False, errors
 
   def price(self, pair=None):
-    price = Price(pair)
+    univ_pair = pair
 
     pair = pair.replace('-', '_')
     data, success, errors = self.do.ticker(pairs=[pair])
@@ -121,8 +121,7 @@ class exchange_btce(proAPI):
 
     if not success: return data, success, errors
 
-    price.sell = data['sell']
-    price.buy = data['buy']
+    price = Price(univ_pair, data['buy'], data['sell'])
 
     return price, success, errors
 
@@ -254,5 +253,9 @@ if __name__ == '__main__':
   print(btce.do.info(pairs=[]))
   print(btce.do._getInfo())
   print('\n\n')
-  print(exmo.price('btc-usd')[0].buy)
-  print(btce.price('btc-usd')[0].buy)
+
+  price, success, errs = exmo.price('btc-usd')
+  print(price.buy, price.sell, price.spread())
+
+  price, success, errs = btce.price('btc-usd')
+  print(price.buy, price.sell, price.spread())
