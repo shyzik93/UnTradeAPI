@@ -33,8 +33,8 @@ class Price():
     self.pair = pair
     self.buy = float(buy)
     self.sell = float(sell)
-    self.glass_buy = None
-    self.glass_sell = None
+    #self.glass_buy = None
+    #self.glass_sell = None
   def spread(self): return self.buy - self.sell
 
 class exchange_exmo(proAPI):
@@ -58,11 +58,11 @@ class exchange_exmo(proAPI):
       return (data, True, errors) if 'error' not in data else (None, False, errors+[data])
     else: return None, False, errors
 
-  def price(self, pair, glass_limit=10):
+  def price(self, pair):
     univ_pair = pair
 
     pair = pair.replace('-', '_').upper()
-    data, success, errors = self.do.order_book(pair=pair, limit=glass_limit)
+    data, success, errors = self.do.order_book(pair=pair, limit=0)
     if success:
       if pair in data: data = data[pair]
       else: errors.append('Нет информации по валютной паре '+pair)
@@ -71,16 +71,22 @@ class exchange_exmo(proAPI):
     if not success: return data, success, errors
 
     price = Price(univ_pair, data['ask_top'], data['bid_top'])
-    price.glass_sell = data['bid']
-    price.glass_buy = data['ask']
+    #price.glass_sell = data['bid']
+    #price.glass_buy = data['ask']
 
     return price, success, errors
 
-  def new_order(self, pair, action):
-    pass
+  def new_order(self, pair, action, quantity, price):
+    pair = pair.replace('-', '_').upper()
+    if price == 'market':
+      price = 0
+      action = market +'_'+ action
+    data, success, errors = self.do._order_create(pair=pair, quantity=quantity, price=price, type=action)
+    return data, success, errors
 
   def cancel_order(self, order_id):
-    pass
+    data, success, errors = self.do._order_cancel(order_id=order_id)
+    return data, success, errors
 
 class exchange_btce(proAPI):
   btce_url = "https://btc-e.nz/tapi"
@@ -129,8 +135,8 @@ class exchange_btce(proAPI):
     pass
 
   def cancel_order(self, order_id):
-    pass
-
+    data, success, errors = self.do._CancelOrder(order_id=order_id)
+    return data, success, errors
 
 # ---------------------- Старый вариант -----------
 class API():
