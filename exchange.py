@@ -6,10 +6,43 @@ import json, hmac, hashlib, os, time
 from urllib import request, parse
 
 import requests
+import serial # pip3 install pyserial
+
+# Класс работы с GSM-модулем
+
+class GSM:
+  def __init__(self, port):
+    self.ser = serial.Serial(port=port, baudrate=115200)
+
+  def send(self, w_text):
+    self.ser.write(bytes(w_text, 'utf-8'))
+    time.sleep(1)
+
+  def read(self):
+    r_text = bytes()
+    while self.ser.inWaiting() > 0:
+      r_text += self.ser.read(1)
+    return r_text
+
+  def sendSMS(self, w_text, phone_number):
+    self.ser.write(bytes(w_text, 'utf-8'))
+    time.sleep(1)
+
+  def readSMS(self):
+    r_text = bytes()
+    while self.ser.inWaiting() > 0:
+      r_text += self.ser.read(1)
+    return r_text
+
+  def close(self): self.ser.close()
+
+# Класс для удобного вызова АПИ.
 
 class Doer:
   def __init__(self, classObj):  self.c = classObj
   def __getattr__(self, api_name, *args): return lambda **args: self.c.shell(api_name, args)
+
+# Класс  протоАПИ бирж
 
 class proAPI:
   def __init__(self, conf):
@@ -28,6 +61,8 @@ class proAPI:
       error = r.status_code +' '+ r.message
       return r.text, False, [error]
 
+# Класс цены
+
 class Price():
   def __init__(self, pair, buy, sell):
     self.pair = pair
@@ -36,6 +71,8 @@ class Price():
     #self.glass_buy = None
     #self.glass_sell = None
   def spread(self): return self.buy - self.sell
+
+# Классы АПИ бирж
 
 class exchange_exmo(proAPI):
   exmo_url = "https://api.exmo.com/v1/"
@@ -246,6 +283,24 @@ class API():
 # -------------------------------------------------
 
 if __name__ == '__main__':
+
+  # Тест GSM
+
+  ser = GSM('/dev/ttyUSB0')
+  try:
+    ser.send('ATI\r\n')
+    print(ser.read())
+    print()
+
+    ser.sendSMS('the text', '79610011222')
+    print(ser.readSMS())
+  finally:
+    ser.close()
+
+  exit()
+
+  # Тест бирж
+
   import configparser, os
   config = configparser.ConfigParser()
   path_conf = os.path.join(os.path.dirname(os.path.abspath('')), 'conf_exchange.txt')
