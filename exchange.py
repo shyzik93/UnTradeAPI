@@ -8,34 +8,6 @@ from urllib import request, parse
 import requests
 import serial # pip3 install pyserial
 
-# Класс работы с GSM-модулем
-
-class GSM:
-  def __init__(self, port):
-    self.ser = serial.Serial(port=port, baudrate=115200)
-
-  def send(self, w_text):
-    self.ser.write(bytes(w_text, 'utf-8'))
-    time.sleep(1)
-
-  def read(self):
-    r_text = bytes()
-    while self.ser.inWaiting() > 0:
-      r_text += self.ser.read(1)
-    return r_text
-
-  def sendSMS(self, w_text, phone_number):
-    self.ser.write(bytes(w_text, 'utf-8'))
-    time.sleep(1)
-
-  def readSMS(self):
-    r_text = bytes()
-    while self.ser.inWaiting() > 0:
-      r_text += self.ser.read(1)
-    return r_text
-
-  def close(self): self.ser.close()
-
 # Класс для удобного вызова АПИ.
 
 class Doer:
@@ -283,21 +255,6 @@ class API():
 # -------------------------------------------------
 
 if __name__ == '__main__':
-
-  # Тест GSM
-
-  ser = GSM('/dev/ttyUSB0')
-  try:
-    ser.send('ATI\r\n')
-    print(ser.read())
-    print()
-
-    ser.sendSMS('the text', '79610011222')
-    print(ser.readSMS())
-  finally:
-    ser.close()
-
-  exit()
 
   # Тест бирж
 
