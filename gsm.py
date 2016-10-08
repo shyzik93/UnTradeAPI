@@ -74,7 +74,7 @@ class SMS_PDU_Builder:
 
         return [len_sca, type_of_number] + sca
 
-    def _build_tpdu(self, address, message, coding, delete_in_minutes): # delete_in_minutes = 1 день
+    def _build_tpdu(self, address, message, coding, delete_in_minutes, is_flash): # delete_in_minutes = 1 день
         if (isinstance(delete_in_minutes, int)): VPF = '10'
         else: VPF = '11'
         PDU_type = [int(
@@ -113,9 +113,12 @@ class SMS_PDU_Builder:
         # Поле DCS представляет собой байт из двух тетрад по 4 бита.
         # Старшая тетрада (с 7 по 4) опаределяет группу кодирования,
         # а младшая ( с 3 по 0 ) - специфичекские данные для группы кодирования
-        if coding == 'ascii': DCS = [0x00]
-        elif coding == '8bit': DCS = [0x04]
-        elif coding == 'ucs2': DCS = [0x08]
+        if is_flash: DCS = '0b0001'
+        else: DCS = '0b0000'
+        if coding == 'ascii':  DCS += '0000' # )x0
+        elif coding == '8bit': DCS += '0100' # 0x4
+        elif coding == 'ucs2': DCS += '1000' # 0x8 
+        DCS = [int(DCS, 2)]
         '''DCS = [int(
             # 
             '00' +  #
@@ -147,7 +150,7 @@ class SMS_PDU_Builder:
         #print(PDU_type, MR, DA, PID, DCS, VP, UDL, UD, sep=' -- ')
         return PDU_type + MR + DA + PID + DCS + VP + UDL + UD
 
-    def build_pdu(self, address, message, sms_center_address='nothing', coding='ucs2', delete_in_minutes=1440):
+    def build_pdu(self, address, message, sms_center_address='nothing', coding='ucs2', delete_in_minutes=1440, is_flash=False):
         ''' Формат PDU осставлен из двух полей:
                 - SCA (Service Centre Address)  - адрес сервисного центра рассылки коротких сообщений;
                 - TPDU (Transport Protocol Data Unit) - пакет данных транспортного протокола.
@@ -158,17 +161,25 @@ class SMS_PDU_Builder:
         if sms_center_address == 'zero': sca = [0]
         elif sms_center_address == 'nothing': sca = []
         else: sca = self._build_address(sms_center_address)
-        tpdu = self._build_tpdu(address, message, coding, delete_in_minutes)
+        tpdu = self._build_tpdu(address, message, coding, delete_in_minutes, is_flash)
         return bytes(sca), bytes(tpdu)
 
-    def hex2hexString(self, HEX): # принимает байты. [0x0, 0xFF, 0x1A] -> '00FF1A'
+    def hex2hexString(self, HEX): # принимает байты. bytes([0x0, 0xFF, 0x1A])  -->  '00FF1A'
         HEX = [str(hex(i))[2:] for i in HEX]
         return ''.join([i if len(i)%2==0  else '0'+i for i in HEX])
 
+    def hexString2hex(self, hexs): # '00FF1A' -->  bytes([0x0, 0xFF, 0x1A])
+        if len(hexs) % 2 != 0: hexs = '0' + hexs
+        HEX = []
+        i = 0
+        while len(HEX) < len(hexs)/2:
+            HEX.append(hexs[i]+hexs[i+1])
+            i += 2
+        return bytes([int(i, 16) for i in HEX])
 
 # Класс работы с GSM-модулем
 
-class GSM:
+class _GSM:
     def __autoconnect(self):
         ports = os.listdir('/dev/')
         for port in ports:
@@ -182,62 +193,139 @@ class GSM:
                 print(' ===== BAD ======')
         return False
 
-    def __init__(self, port=None):
+    def __init__(self, show_traffic=True, port=None):
         if port is None:
             self.ser = self.__autoconnect()
             if self.ser == False:
                 print('No serial ports to connect')
                 exit()
         else: self.ser = serial.Serial(port=port, baudrate=115200)
+
         time.sleep(3)
 
-        self.pdu_builder = SMS_PDU_Builder()
+        self.show_traffic = show_traffic
+
+        self._write('AT')
+        if not self._read(): print(' ===== The device is silent =====')
 
     def close(self): self.ser.close() 
 
-    def read(self):
+    def _read(self):
         r_text = bytes()
         while self.ser.inWaiting() > 0:
             r_text += self.ser.read(self.ser.inWaiting())
 
-        if len(r_text) != 0:
+        if self.show_traffic and len(r_text) != 0:
             print('------ READED AS BYTES: ', r_text)
             print('------- READED AS LIST: ', list(r_text))
             print()
 
-        return str(r_text, 'utf-8')
+        return r_text
 
-    def write(self, w_text, endline='\r', to_read=True):
+    def _write(self, w_text, endline='\r'):
         if isinstance(endline, str): endline = bytes(endline, 'utf-8')
         if isinstance(w_text, str): w_text = bytes(w_text, 'utf-8')
         w_text = w_text + endline
 
-        print('------ WROTE AS BYTES: ', w_text)
-        print('------- WROTE AS LIST: ', list(w_text))
-        print()
+        if self.show_traffic:
+            print('------ WROTE AS BYTES: ', w_text)
+            print('------- WROTE AS LIST: ', list(w_text))
+            print()
 
         self.ser.write(w_text)
         time.sleep(0.5)
 
-        if to_read: return self.read()
+class GSM(_GSM):
+    def __init__(self, show_traffic=True, port=None, isSetEcho=True):
+        _GSM.__init__(self, show_traffic, port)
+        self.pdu_builder = SMS_PDU_Builder()
+        self.echo_isSet = isSetEcho
+        self.echo(isSetEcho)
+
+    def read(self, isToParse='simple', isRetEcho=False):
+        return self._read()
+        '''r_text = self._read()
+
+        if isToParse is True:
+            echo, r_text, is_error = self.parse_read(r_text)
+            if isRetEcho: return echo, r_text, is_error
+            return r_text, is_error
+        elif isToParse == 'simple': return self.parse_read_simple(r_text)
+ 
+        return r_text'''
+
+    def write(self, w_text, endline='\r'):
+        self._write(w_text, endline)
+
+    '''
+    def parse_read(self, s, endline='\r\n'):
+        s = str(s, 'utf-8').strip()
+
+        if not s: return '', '', True
+
+        if self.echo_isSet: echo, answer = s.split(endline, 2)
+        else: echo, answer = (None, s)
+
+        ok_msg = 'OK'
+        if answer[-len(ok_msg):] == ok_msg:
+            answer = answer[:-len(ok_msg)]
+            is_error = False
+        else: is_error = True
+
+        return echo, answer.strip(), is_error'''
+
+    def parse_read_simple(self, s, endline='\r\n'):
+        s = str(s, 'utf-8').strip().split(endline)
+
+        if self.echo_isSet: return s[1:]
+        return s
+
+    def echo(self, isSet=None):
+        self.echo_isSet = isSet
+        if isSet is None:
+            self.write('ATE=?')
+            return self.parse_read_simple(self.read())
+
+        if isSet:
+            self.write('ATE1')
+            return self.parse_read_simple(self.read())
+        else:
+            self.write('ATE0')
+            return self.parse_read_simple(self.read())
+
+    def info(self):
+        self.write('ATI')
+        return self.parse_read_simple(self.read())
+
+    def at(self):
+        self.write('AT')
+        return self.parse_read_simple(self.read())
+
+    # ---- высокий уровень
 
     def SMS_send(self, message, address, sets={}):
         if 'coding' not in sets:             sets['coding'] = 'ucs2'
         if 'delete_in_minutes' not in sets:  sets['delete_in_minutes'] = 10
         if 'sms_center_address' not in sets: sets['sms_center_address'] = 'zero'
+        if 'is_flash' not in sets: sets['is_flash'] = False
 
         CONFIRM = bytes([26]) # (SUB) Ctrl-Z
         CANCEL  = bytes([27]) # ESC
 
         if self.SMS_mode == 'text':
-            res = self.write('AT+CMGS="'+address+'"')
+            self.write('AT+CMGS="'+address+'"')
+            print(self.parse_read_simple(self.read()))
             self.write(bytes(message, 'utf-8'), endline=CONFIRM)
+            print(self.parse_read_simple(self.read()))
+
 
         elif self.SMS_mode == 'pdu':
-            sca, tpdu = self.pdu_builder.build_pdu(address, message, sets['sms_center_address'], sets['coding'], sets['delete_in_minutes'])
+            sca, tpdu = self.pdu_builder.build_pdu(address, message, sets['sms_center_address'], sets['coding'], sets['delete_in_minutes'], sets['is_flash'])
             len_tpdu = str(len(tpdu))
             self.write('AT+CMGS='+len_tpdu)
+            print(self.parse_read_simple(self.read()))
             self.write(self.pdu_builder.hex2hexString(sca + tpdu), endline=CONFIRM)
+            print(self.parse_read_simple(self.read()))
 
     def SMS_read(self):
         r_text = bytes()
@@ -246,36 +334,57 @@ class GSM:
         return r_text
 
     def SMS_setMode(self, mode):
+        ''' Устанавливает режим: текстовый илши PDU '''
         if mode == 'pdu':
             ser.write('AT+CMGF=0')
         elif mode == 'text':
             ser.write('AT+CMGF=1')
         self.SMS_mode = mode
+        print(self.parse_read_simple(self.read()))
+
+    def setCoding(self, coding):
+        ''' Устанавливает кодировку для текстового режима '''
+        # кодировка текстового режима. Доступны: GSM, UCS2, HEX
+        self.write('AT+CSCS="'+coding+'"')
+        print(self.parse_read_simple(self.read()))
 
 if __name__ == '__main__':
 
   # Тест GSM
 
-  ser = GSM()
+  ser = GSM(show_traffic=False)
   try:
-  	# отключает или включает эхо
-    #ser.write('ATE0')
-    ser.write('AT')#'AT+CUSD=1,"*100#",15\r\n')
-    #ser.write('ATI')
+    #'AT+CUSD=1,"*100#",15\r\n')
     # получаем нолмер сервисного центра
     #ser.write('AT+CSCA?')
-    # кодировка текстового режима. Доступны: GSM, UCS2, HEX
-    #ser.write('AT+CSCS="GSM"')
 
-    #print(ser.write('ATV1')) # отключаем эхо команд
+    #ser.echo(1)
+    #print('-- ANSWER: ', ser.at())
+    #ser.echo(0)
+    #print('-- ANSWER: ', ser.at())
 
-    address = '+79998887766'
+    #print('-- ANSWER: ', ser.echo())
+    #print('-- ANSWER: ', ser.info())
 
-    ser.SMS_setMode('pdu')    
+    '''
+    #address = '+79998887766'
+
+    ser.SMS_setMode('pdu')
     ser.SMS_send('  Latinica Кирилица Ё', address)
     time.sleep(5)
-    ser.SMS_setMode('text')    
-    ser.SMS_send('  Latinica Кирилица Ё', address)
+    #ser.SMS_setMode('text')
+    #ser.SMS_send('  Latinica Кирилица Ё', address)'''
+
+    #ser.write('ATV1')
+    #print(ser.read())
+
+    ser.SMS_setMode('text')
+    ser.setCoding('HEX')
+    ser.write('AT+CUSD=1,"#105#",15')
+    time.sleep(5)
+    raw = ser.read()
+    print(raw)
+    print(ser.parse_read_simple(raw))
 
     while 1:
       w_text = input()

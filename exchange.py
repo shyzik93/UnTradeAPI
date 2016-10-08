@@ -264,7 +264,7 @@ if __name__ == '__main__':
   config.read(path_conf)
 
   exmo = exchange_exmo(config['exmo'])
-  btce = exchange_btce(config['btce'])
+  btce = exchange_btce(config['btce'])s
   #print()
   print(exmo.do._user_info())
   #print()
