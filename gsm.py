@@ -11,7 +11,7 @@ Thanks to authours of documentation:
 
 '''
 
-import os, serial, time
+import os, serial, time, copy
 
 class SMS_PDU_Builder:
     def __init__(self):
@@ -246,6 +246,16 @@ class _GSM:
         self.ser.write(w_text)
         time.sleep(0.5)
 
+    def parse(self, s, endline='\r\n'):
+        #s = str(s, 'utf-8').strip().split(endline)
+        s = s.strip().split(bytes(endline, 'utf-8'))
+
+        if self.echo_isSet: s = s[1:]
+
+        s = [i for i in s if len(i) != 0]
+
+        return s
+
     '''def __getattr__(self, name):
         return Executor(self, name)'''
 
@@ -256,6 +266,20 @@ class GSM(_GSM):
         self.echo_isSet = isSetEcho
         self.echo(isSetEcho)
 
+        self.sets = {
+            'sms': {
+                'coding': 'ucs2',
+                'delete_in_minutes': 10,
+                'sms_center_address': 'zero',
+                'is_flash': False,
+            },
+            'echo': 1
+        }
+
+    def _get_sets(self, group_name, user_sets):
+        sets = copy.deepcopy(self.sets[group_name])
+        sets.update(user_sets)
+
     def read(self, isToParse='simple', isRetEcho=False):
         return self._read()
         '''r_text = self._read()
@@ -264,7 +288,7 @@ class GSM(_GSM):
             echo, r_text, is_error = self.parse_read(r_text)
             if isRetEcho: return echo, r_text, is_error
             return r_text, is_error
-        elif isToParse == 'simple': return self.parse_read_simple(r_text)
+        elif isToParse == 'simple': return self.parse(r_text)
  
         return r_text'''
 
@@ -288,91 +312,98 @@ class GSM(_GSM):
 
         return echo, answer.strip(), is_error'''
 
-    def parse_read_simple(self, s, endline='\r\n'):
-        #s = str(s, 'utf-8').strip().split(endline)
-        s = s.strip().split(bytes(endline, 'utf-8'))
-
-        if self.echo_isSet: s = s[1:]
-
-        s = [i for i in s if len(i) != 0]
-
-        return s
-
     def set(self, name, data=None, endline='\r'):
         if isinstance(data, (int, float)): data = str(data)
         if data is not None: self.write('AT'+name+'='+data, endline)
         else: self.write('AT'+name, endline)
-    def get(self, name, endline='\r'): self.write('AT'+name+'?', endline)
-    def test(self, name, endline='\r'): self.write('AT'+name+'=?', endline)
+    def get(self, name, endline='\r'):
+        self.write('AT'+name+'?', endline)
+    def test(self, name, endline='\r'):
+        self.write('AT'+name+'=?', endline)
     def raw(self, name): self.write(name, endline='')
+
+    def parse_test(self, test):
+        if test[-1] == bytes('OK', 'utf-8'):
+            is_error = False
+            values = test[0].split(bytes(' ', 'utf-8'), 1)[1]
+            values = values[1:-1].split(bytes(',', 'utf-8'))
+            values = [i[1:-1] if i.startswith(bytes('"', 'utf-8')) else i for i in values]
+        else:
+            is_error = True
+            values = test[0]
+        return is_error, values
+
+    def parse_get(self, get):
+        pass
 
     def echo(self, isSet=None):
         self.echo_isSet = isSet
         if isSet is None:
             self.write('ATE=?')
-            return self.parse_read_simple(self.read())
+            return self.parse(self.read())
 
         if isSet:
             self.write('ATE1')
-            return self.parse_read_simple(self.read())
+            return self.parse(self.read())
         else:
             self.write('ATE0')
-            return self.parse_read_simple(self.read())
+            return self.parse(self.read())
 
     def info(self):
         self.write('ATI')
-        return self.parse_read_simple(self.read())
+        return self.parse(self.read())
 
     def at(self):
         self.write('AT')
-        return self.parse_read_simple(self.read())
+        return self.parse(self.read())
 
     # ---- высокий уровень
 
-    def SMS_send(self, message, address, sets={}):
-        if 'coding' not in sets:             sets['coding'] = 'ucs2'
+    def sms_send(self, message, address, sets={}):
+        sets = self._get_sets('sms', sets)
+        '''if 'coding' not in sets:             sets['coding'] = 'ucs2'
         if 'delete_in_minutes' not in sets:  sets['delete_in_minutes'] = 10
         if 'sms_center_address' not in sets: sets['sms_center_address'] = 'zero'
-        if 'is_flash' not in sets: sets['is_flash'] = False
+        if 'is_flash' not in sets: sets['is_flash'] = False'''
 
         CONFIRM = bytes([26]) # (SUB) Ctrl-Z
         CANCEL  = bytes([27]) # ESC
 
         if self.SMS_mode == 'text':
             self.write('AT+CMGS="'+address+'"')
-            print(self.parse_read_simple(self.read()))
+            print(self.parse(self.read()))
             self.write(bytes(message, 'utf-8'), endline=CONFIRM)
-            print(self.parse_read_simple(self.read()))
+            print(self.parse(self.read()))
 
 
         elif self.SMS_mode == 'pdu':
             sca, tpdu = self.pdu_builder.build_pdu(address, message, sets['sms_center_address'], sets['coding'], sets['delete_in_minutes'], sets['is_flash'])
             len_tpdu = str(len(tpdu))
             self.write('AT+CMGS='+len_tpdu)
-            print(self.parse_read_simple(self.read()))
+            print(self.parse(self.read()))
             self.write(self.pdu_builder.hex2hexString(sca + tpdu), endline=CONFIRM)
-            print(self.parse_read_simple(self.read()))
+            print(self.parse(self.read()))
 
-    def SMS_read(self):
+    def sms_read(self):
         r_text = bytes()
         while self.ser.inWaiting() > 0:
             r_text += self.ser.read(1)
         return r_text
 
-    def SMS_setMode(self, mode):
+    def sms_setMode(self, mode):
         ''' Устанавливает режим: текстовый илши PDU '''
         if mode == 'pdu':
             self.write('AT+CMGF=0')
         elif mode == 'text':
             self.write('AT+CMGF=1')
         self.SMS_mode = mode
-        print(self.parse_read_simple(self.read()))
+        print(self.parse(self.read()))
 
     def setCoding(self, coding):
         ''' Устанавливает кодировку для текстового режима '''
         # кодировка текстового режима. Доступны: GSM, UCS2, HEX
         self.write('AT+CSCS="'+coding+'"')
-        print(self.parse_read_simple(self.read()))
+        print(self.parse(self.read()))
 
     def TextModeParameters(self, action, value):
         if action=='get':
@@ -383,7 +414,7 @@ class GSM(_GSM):
             self.write('AT+CSDH')
         elif action=='set':
             self.write('AT+CSDH='+str(value))
-        print(self.parse_read_simple(self.read()))
+        print(self.parse(self.read()))
 
 #gsm.set.func -  установитиь значение
 #gsm.cur.func -  вернуть текущее значение
@@ -412,41 +443,48 @@ if __name__ == '__main__':
     #address = '+79998887766'
     address = '+79615326479'
 
-    gsm.SMS_setMode('pdu')
-    gsm.SMS_send('  Latinica Кирилица Ё', address)
+    gsm.sms_setMode('pdu')
+    gsm.sms_send('  Latinica Кирилица Ё', address)
     time.sleep(5)
-    #gsm.SMS_setMode('text')
-    #gsm.SMS_send('  Latinica Кирилица Ё', address)'''
+    #gsm.sms_setMode('text')
+    #gsm.sms_send('  Latinica Кирилица Ё', address)'''
 
     #gsm.write('ATV1')
     #print(gsm.read())
 
     #gsm.at()
-    #gsm.SMS_setMode('text')
+    #gsm.sms_setMode('text')
     #gsm.setCoding('HEX')
     #gsm.write('AT+CUSD=1,"#105#",15')
     #time.sleep(5)
     #raw = gsm.read()
     #print(raw)
-    #print(gsm.parse_read_simple(raw))
+    #print(gsm.parse(raw))
 
     #gsm.showTextModeParameters()
 
     #gsm.write('AT+CSCS='+data)
     gsm.set('+CSCS', 'GSM')
-    print(gsm.parse_read_simple(gsm.read()))
+    print(gsm.parse(gsm.read()))
 
     #gsm.write('AT+CSCS')
     gsm.set('+CSCS') # gsm.exe
-    print(gsm.parse_read_simple(gsm.read()))
+    print(gsm.parse(gsm.read()))
 
     #gsm.write('AT+CSCS?')
     gsm.get('+CSCS')
-    print(gsm.parse_read_simple(gsm.read()))
+    print(gsm.parse(gsm.read()))
 
     #gsm.write('AT+CSCS=?')
     gsm.test('+CSCS')
-    print(gsm.parse_read_simple(gsm.read()))
+    test = gsm.parse(gsm.read())
+    print(test)
+    print(gsm.parse_test(test))
+
+    gsm.test('+CSCd')
+    test = gsm.parse(gsm.read())
+    print(test)
+    print(gsm.parse_test(test))
 
     #gsm.write('AT+CSCS='+data)
     #gsm.raw('AT+CSCS='+data)
@@ -456,7 +494,7 @@ if __name__ == '__main__':
       if w_text == 'exit': break
       if w_text != '': gsm.write(w_text)
       r_text = gsm.read()
-      if r_text != '': print(gsm.parse_read_simple(r_text))
+      if r_text != '': print(gsm.parse(r_text))
 
     print('\n\n---------------\nSTOPPED')
   finally:
