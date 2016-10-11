@@ -60,7 +60,8 @@ class SMS_PDU_Builder:
         '''
         type_of_number = 0x91 # интеенациональный
         # убираем '+'
-        _sca = address if address[0] != '+' else address[1:]
+        _sca = address if not address.startswith('+') else address[1:]
+        #_sca = address if address[0] != '+' else address[1:]
         # определили длину (количество полуоктетов (полубайтов, тетрад))
         len_sca = len(_sca)
         # добавили 'F' в конец, если длина нечётная
@@ -177,6 +178,16 @@ class SMS_PDU_Builder:
             i += 2
         return bytes([int(i, 16) for i in HEX])
 
+'''class Executor:
+    def __init__(self, cls, name):
+        self.cls = cls
+        self.name = name
+    def __getattr__(self, name2):
+        self.name2 = name2
+        return self
+    def __call__(self, *args, **kargs):
+        return self.cls.__getattribute__(self.name2)(self.cls, *args, **kargs)'''
+
 # Класс работы с GSM-модулем
 
 class _GSM:
@@ -235,6 +246,9 @@ class _GSM:
         self.ser.write(w_text)
         time.sleep(0.5)
 
+    '''def __getattr__(self, name):
+        return Executor(self, name)'''
+
 class GSM(_GSM):
     def __init__(self, show_traffic=True, port=None, isSetEcho=True):
         _GSM.__init__(self, show_traffic, port)
@@ -275,10 +289,22 @@ class GSM(_GSM):
         return echo, answer.strip(), is_error'''
 
     def parse_read_simple(self, s, endline='\r\n'):
-        s = str(s, 'utf-8').strip().split(endline)
+        #s = str(s, 'utf-8').strip().split(endline)
+        s = s.strip().split(bytes(endline, 'utf-8'))
 
-        if self.echo_isSet: return s[1:]
+        if self.echo_isSet: s = s[1:]
+
+        s = [i for i in s if len(i) != 0]
+
         return s
+
+    def set(self, name, data=None, endline='\r'):
+        if isinstance(data, (int, float)): data = str(data)
+        if data is not None: self.write('AT'+name+'='+data, endline)
+        else: self.write('AT'+name, endline)
+    def get(self, name, endline='\r'): self.write('AT'+name+'?', endline)
+    def test(self, name, endline='\r'): self.write('AT'+name+'=?', endline)
+    def raw(self, name): self.write(name, endline='')
 
     def echo(self, isSet=None):
         self.echo_isSet = isSet
@@ -336,9 +362,9 @@ class GSM(_GSM):
     def SMS_setMode(self, mode):
         ''' Устанавливает режим: текстовый илши PDU '''
         if mode == 'pdu':
-            ser.write('AT+CMGF=0')
+            self.write('AT+CMGF=0')
         elif mode == 'text':
-            ser.write('AT+CMGF=1')
+            self.write('AT+CMGF=1')
         self.SMS_mode = mode
         print(self.parse_read_simple(self.read()))
 
@@ -348,50 +374,90 @@ class GSM(_GSM):
         self.write('AT+CSCS="'+coding+'"')
         print(self.parse_read_simple(self.read()))
 
+    def TextModeParameters(self, action, value):
+        if action=='get':
+            self.write('AT+CSDH?')
+        elif action=='list':
+            self.write('AT+CSDH=?')
+        elif action=='exe':
+            self.write('AT+CSDH')
+        elif action=='set':
+            self.write('AT+CSDH='+str(value))
+        print(self.parse_read_simple(self.read()))
+
+#gsm.set.func -  установитиь значение
+#gsm.cur.func -  вернуть текущее значение
+#gsm.list.func - вернуть список возможных значений
+#gsm.exe.func -  выполнить команду
+
 if __name__ == '__main__':
 
   # Тест GSM
 
-  ser = GSM(show_traffic=False)
+  gsm = GSM(show_traffic=False)
   try:
     #'AT+CUSD=1,"*100#",15\r\n')
     # получаем нолмер сервисного центра
-    #ser.write('AT+CSCA?')
+    #gsm.write('AT+CSCA?')
 
-    #ser.echo(1)
-    #print('-- ANSWER: ', ser.at())
-    #ser.echo(0)
-    #print('-- ANSWER: ', ser.at())
+    #gsm.echo(1)
+    #print('-- ANSWER: ', gsm.at())
+    #gsm.echo(0)
+    #print('-- ANSWER: ', gsm.at())
 
-    #print('-- ANSWER: ', ser.echo())
-    #print('-- ANSWER: ', ser.info())
+    #print('-- ANSWER: ', gsm.echo())
+    #print('-- ANSWER: ', gsm.info())
 
     '''
     #address = '+79998887766'
+    address = '+79615326479'
 
-    ser.SMS_setMode('pdu')
-    ser.SMS_send('  Latinica Кирилица Ё', address)
+    gsm.SMS_setMode('pdu')
+    gsm.SMS_send('  Latinica Кирилица Ё', address)
     time.sleep(5)
-    #ser.SMS_setMode('text')
-    #ser.SMS_send('  Latinica Кирилица Ё', address)'''
+    #gsm.SMS_setMode('text')
+    #gsm.SMS_send('  Latinica Кирилица Ё', address)'''
 
-    #ser.write('ATV1')
-    #print(ser.read())
+    #gsm.write('ATV1')
+    #print(gsm.read())
 
-    ser.SMS_setMode('text')
-    ser.setCoding('HEX')
-    ser.write('AT+CUSD=1,"#105#",15')
-    time.sleep(5)
-    raw = ser.read()
-    print(raw)
-    print(ser.parse_read_simple(raw))
+    #gsm.at()
+    #gsm.SMS_setMode('text')
+    #gsm.setCoding('HEX')
+    #gsm.write('AT+CUSD=1,"#105#",15')
+    #time.sleep(5)
+    #raw = gsm.read()
+    #print(raw)
+    #print(gsm.parse_read_simple(raw))
+
+    #gsm.showTextModeParameters()
+
+    #gsm.write('AT+CSCS='+data)
+    gsm.set('+CSCS', 'GSM')
+    print(gsm.parse_read_simple(gsm.read()))
+
+    #gsm.write('AT+CSCS')
+    gsm.set('+CSCS') # gsm.exe
+    print(gsm.parse_read_simple(gsm.read()))
+
+    #gsm.write('AT+CSCS?')
+    gsm.get('+CSCS')
+    print(gsm.parse_read_simple(gsm.read()))
+
+    #gsm.write('AT+CSCS=?')
+    gsm.test('+CSCS')
+    print(gsm.parse_read_simple(gsm.read()))
+
+    #gsm.write('AT+CSCS='+data)
+    #gsm.raw('AT+CSCS='+data)
 
     while 1:
       w_text = input()
       if w_text == 'exit': break
-      if w_text != '': ser.write(w_text)
-      r_text = ser.read()
+      if w_text != '': gsm.write(w_text)
+      r_text = gsm.read()
+      if r_text != '': print(gsm.parse_read_simple(r_text))
 
     print('\n\n---------------\nSTOPPED')
   finally:
-    ser.close()
+    gsm.close()
