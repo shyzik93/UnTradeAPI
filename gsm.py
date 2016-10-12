@@ -441,7 +441,6 @@ if __name__ == '__main__':
 
     '''
     #address = '+79998887766'
-    address = '+79615326479'
 
     gsm.sms_setMode('pdu')
     gsm.sms_send('  Latinica Кирилица Ё', address)
