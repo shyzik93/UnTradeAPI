@@ -227,9 +227,9 @@ class _GSM:
             r_text += self.ser.read(self.ser.inWaiting())
 
         if self.show_traffic and len(r_text) != 0:
+            print()
             print('------ READED AS BYTES: ', r_text)
             print('------- READED AS LIST: ', list(r_text))
-            print()
 
         return r_text
 
@@ -239,22 +239,25 @@ class _GSM:
         w_text = w_text + endline
 
         if self.show_traffic:
+            print()
             print('------ WROTE AS BYTES: ', w_text)
             print('------- WROTE AS LIST: ', list(w_text))
-            print()
 
         self.ser.write(w_text)
         time.sleep(0.5)
 
-    def parse(self, s, endline='\r\n'):
-        #s = str(s, 'utf-8').strip().split(endline)
-        s = s.strip().split(bytes(endline, 'utf-8'))
+    def parse(self, r_text, endline='\r\n'):
+        #r_text = str(r_text, 'utf-8').strip().split(endline)
+        r_text = r_text.strip().split(bytes(endline, 'utf-8'))
 
-        if self.echo_isSet: s = s[1:]
+        if self.echo_isSet: r_text = r_text[1:]
 
-        s = [i for i in s if len(i) != 0]
+        r_text = [i for i in r_text if len(i) != 0]
 
-        return s
+        if self.show_traffic:
+            print('----- READED AS R_LIST: ', r_text)
+
+        return r_text # it's r_list now
 
     '''def __getattr__(self, name):
         return Executor(self, name)'''
@@ -322,19 +325,36 @@ class GSM(_GSM):
         self.write('AT'+name+'=?', endline)
     def raw(self, name): self.write(name, endline='')
 
-    def parse_test(self, test):
-        if test[-1] == bytes('OK', 'utf-8'):
+    def parse_test(self, r_list):
+        if r_list == []: return False, None
+        if r_list[-1] == bytes('OK', 'utf-8'):
             is_error = False
-            values = test[0].split(bytes(' ', 'utf-8'), 1)[1]
+            values = r_list[0].split(bytes(' ', 'utf-8'), 1)[1]
             values = values[1:-1].split(bytes(',', 'utf-8'))
             values = [i[1:-1] if i.startswith(bytes('"', 'utf-8')) else i for i in values]
         else:
             is_error = True
-            values = test[0]
+            values = r_list[0]
+
+        if self.show_traffic:
+            print('----- READED AS R_LIST2: ', (is_error, values))
+
         return is_error, values
 
-    def parse_get(self, get):
-        pass
+    def parse_get(self, r_list):
+        if r_list == []: return False, None
+        if r_list[-1] == bytes('OK', 'utf-8'):
+            is_error = False
+            value = r_list[0].split(bytes(':', 'utf-8'), 1)[1].strip()
+            value = value[1:-1] if value.startswith(bytes('"', 'utf-8')) else value
+        else:
+            is_error = True
+            value = r_list[0]
+
+        if self.show_traffic:
+            print('----- READED AS R_LIST2: ', (is_error, value))
+
+        return is_error, value
 
     def echo(self, isSet=None):
         self.echo_isSet = isSet
@@ -472,18 +492,32 @@ if __name__ == '__main__':
 
     #gsm.write('AT+CSCS?')
     gsm.get('+CSCS')
-    print(gsm.parse(gsm.read()))
+    r_list = gsm.parse(gsm.read())
+    #print(r_list)
+    print(gsm.parse_get(r_list))
 
     #gsm.write('AT+CSCS=?')
     gsm.test('+CSCS')
-    test = gsm.parse(gsm.read())
-    print(test)
-    print(gsm.parse_test(test))
+    r_list = gsm.parse(gsm.read())
+    #print(r_list)
+    print(gsm.parse_test(r_list))
 
-    gsm.test('+CSCd')
-    test = gsm.parse(gsm.read())
-    print(test)
-    print(gsm.parse_test(test))
+    gsm.test('+CSCd') # несуществующая команда
+    r_list = gsm.parse(gsm.read())
+    #print(r_list)
+    print(gsm.parse_test(r_list))
+
+    gsm.test('+CMGL')
+    r_list = gsm.parse(gsm.read())
+    print(gsm.parse_test(r_list))
+
+    gsm.get('+CMGL')
+    r_list = gsm.parse(gsm.read())
+    print(gsm.parse_test(r_list))
+
+    gsm.set('+CMGL', 4)
+    r_list = gsm.parse(gsm.read())
+    print(gsm.parse_test(r_list))
 
     #gsm.write('AT+CSCS='+data)
     #gsm.raw('AT+CSCS='+data)
