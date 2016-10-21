@@ -17,7 +17,7 @@ class Doer:
 # Класс  протоАПИ бирж
 
 class proAPI:
-    def __init__(self, conf):
+    def __init__(self, conf={}):
       self.conf = conf
       self.do = Doer(self)
 
@@ -33,6 +33,12 @@ class proAPI:
         else:
             error = r.status_code +' '+ r.message
             return r.text, False, [error]
+
+    def sign(self, data): # type of data is dict
+        ''' Стандартный вариант. Можно переопределять, если алгоритм отличается '''
+        data = bytearray(parse.urlencode(data), 'utf-8')
+        sign = hmac.new(bytearray(self.conf['secret'], 'utf-8'), msg=data, digestmod=hashlib.sha512).hexdigest()
+        return data, sign
 
 # Класс цены
 
@@ -53,14 +59,15 @@ class Price():
 class exchange_exmo(proAPI):
     exmo_url = "https://api.exmo.com/v1/"
 
-    def sign(self, data):
-        return hmac.new(key=bytearray(self.conf['secret'], 'utf-8'), msg=data, digestmod=hashlib.sha512).hexdigest()
+    #def sign(self, data):
+    #    return hmac.new(key=bytearray(self.conf['secret'], 'utf-8'), msg=data, digestmod=hashlib.sha512).hexdigest()
 
     def shell(self, api_name, api_params):
         if api_name.startswith('_'): # Auth API
             api_name = api_name[1:]
             api_params["nonce"] = str(time.time()).replace('.', '')#split('.')[0]
-            sign = self.sign(bytearray(parse.urlencode(api_params), 'utf-8'))
+            #sign = self.sign(bytearray(parse.urlencode(api_params), 'utf-8'))
+            api_params, sign = self.sign(api_params)
             header = {"Key": self.conf['key'], "Sign":sign}
             data, success, errors = self.urlopen(self.exmo_url + api_name, POST=api_params, headers=header)
         else: # Public API
@@ -77,7 +84,9 @@ class exchange_exmo(proAPI):
         data, success, errors = self.do.order_book(pair=pair, limit=0)
         if success:
             if pair in data: data = data[pair]
-            else: errors.append('Нет информации по валютной паре '+pair)
+            else: 
+                success = False
+                errors.append('Нет информации по валютной паре '+pair)
         else: success = False
 
         if not success: return data, success, errors
@@ -112,8 +121,9 @@ class exchange_btce(proAPI):
             nonce_v = str(time.time()).split('.')[0]
             api_params['method'] = api_name
             api_params['nonce'] = nonce_v
-            post_data = bytearray(parse.urlencode(api_params), 'utf-8')
-            sign = hmac.new(bytearray(self.conf['secret'], 'utf-8'), post_data, digestmod=hashlib.sha512).hexdigest()
+            #post_data = bytearray(parse.urlencode(api_params), 'utf-8')
+            #sign = hmac.new(bytearray(self.conf['secret'], 'utf-8'), post_data, digestmod=hashlib.sha512).hexdigest()
+            post_data, sign = self.sign(api_params)
             headers = {"Content-type" : "application/x-www-form-urlencoded",
                        "Key" : self.conf['key'],
                        "Sign" : sign}
@@ -134,7 +144,9 @@ class exchange_btce(proAPI):
         data, success, errors = self.do.ticker(pairs=[pair])
         if success:
             if pair in data: data = data[pair]
-            else: errors.append('Нет информации по валютной паре '+pair)
+            else:
+                success = False
+                errors.append('Нет информации по валютной паре '+pair)
         else: success = False
 
         if not success: return data, success, errors
@@ -149,6 +161,56 @@ class exchange_btce(proAPI):
     def cancel_order(self, order_id):
         data, success, errors = self.do._CancelOrder(order_id=order_id)
         return data, success, errors
+
+class exchange_poloniex(proAPI):
+    trade_url =  'https://poloniex.com/tradingApi'
+    public_url = 'https://poloniex.com/public'
+
+    def shell(self, api_name, api_params):
+        if api_name.startswith('_'): # Auth API
+            api_name = api_name[1:]
+            nonce_v = str(time.time()).split('.')[0]
+            api_params['command'] = api_name
+            api_params['nonce'] = nonce_v
+            post_data, sign = self.sign(api_params)
+            headers = {"Content-type" : "application/x-www-form-urlencoded",
+                       "Key" : self.conf['key'],
+                       "Sign" : sign}
+            data, success, errors = self.urlopen(self.btce_url, POST=post_data, headers=headers)
+        else: # Public API
+            api_params['command'] = api_name
+            data, success, errors = self.urlopen(self.public_url, GET=api_params)
+
+        if success:
+            data = json.loads(data)
+            return (data, True, errors) if 'error' not in data else (None, False, errors+[data])
+        else: return None, False, errors
+
+    def price(self, upair=None): # upair is universal pair
+        pair = upair.replace('-', '_').upper()
+
+        data, success, errors = self.do.returnTicker(pairs=[pair])
+        if success:
+            if pair in data: data = data[pair]
+            else:
+              success = False
+              errors.append('Нет информации по валютной паре '+pair)
+        else: success = False
+
+        if not success: return data, success, errors
+
+        price = Price(upair, data['lowestAsk'], data['highestBid'])
+
+        return price, success, errors
+
+    def new_order(self, pair, action):
+        pass
+
+    def cancel_order(self, order_id):
+        #data, success, errors = self.do._CancelOrder(order_id=order_id)
+        #return data, success, errors
+        pass
+
 
 # ---------------------- Старый вариант -----------
 class API():
@@ -268,6 +330,8 @@ if __name__ == '__main__':
 
     exmo = exchange_exmo(config['exmo'])
     btce = exchange_btce(config['btce'])
+    polo = exchange_poloniex()
+
     #print()
     print(exmo.do._user_info())
     #print()
@@ -280,6 +344,12 @@ if __name__ == '__main__':
 
     price, success, errs = btce.price('btc-usd')
     print(price.buy, price.sell, price.spread)
+
+    price, success, errs = polo.price('usdt-btc') # usd = dollar, usdt = teather dollar
+    print(price.buy, price.sell, price.spread)
+
+    #data, success, errs = polo.do.returnTicker()
+    #print(data, success, errs)
 
     def fprice(price_float):
         return '{0:<15}'.format(price_float)
