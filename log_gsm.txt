@@ -1,0 +1,59 @@
+
+------ WROTE AS BYTES: AT
+------ READED AS BYTES: AT
+OK
+
+------ WROTE AS BYTES: ATE1
+------ READED AS BYTES: ATE1
+OK
+
+----- READED AS R_LIST: [b'OK']
+------ WROTE AS BYTES: AT+CSCS=GSM
+------ READED AS BYTES: AT+CSCS=GSM
+OK
+
+----- READED AS R_LIST: [b'OK']
+------ WROTE AS BYTES: AT+CSCS
+------ READED AS BYTES: AT+CSCS
++CME ERROR:49
+
+----- READED AS R_LIST: [b'+CME ERROR:49']
+------ WROTE AS BYTES: AT+CSCS?
+------ READED AS BYTES: AT+CSCS?
++CSCS: "GSM"
+
+OK
+
+----- READED AS R_LIST: [b'+CSCS: "GSM"', b'OK']
+----- READED AS R_LIST2: (False, b'GSM')
+------ WROTE AS BYTES: AT+CSCS=?
+------ READED AS BYTES: AT+CSCS=?
++CSCS: ("GSM","HEX","PCCP936","UCS2")
+
+OK
+
+----- READED AS R_LIST: [b'+CSCS: ("GSM","HEX","PCCP936","UCS2")', b'OK']
+----- READED AS R_LIST2: (False, [b'GSM', b'HEX', b'PCCP936', b'UCS2'])
+------ WROTE AS BYTES: AT+CSCd=?
+------ READED AS BYTES: AT+CSCd=?
++CME ERROR:58
+
+----- READED AS R_LIST: [b'+CME ERROR:58']
+----- READED AS R_LIST2: (True, b'+CME ERROR:58')
+------ WROTE AS BYTES: AT+CMGL=?
+------ READED AS BYTES: AT+CMGL=?
++CMGL: (0-4)
+
+OK
+
+----- READED AS R_LIST: [b'+CMGL: (0-4)', b'OK']
+----- READED AS R_LIST2: (False, [b'0-4'])
+------ WROTE AS BYTES: AT+CMGL?
+------ READED AS BYTES: AT+CMGL?
++CMS ERROR:303
+
+----- READED AS R_LIST: [b'+CMS ERROR:303']
+----- READED AS R_LIST2: (True, b'+CMS ERROR:303')
+------ WROTE AS BYTES: AT+CMGL=4
+------ READED AS BYTES: AT+CMGL=4
+----- READED AS R_LIST: []

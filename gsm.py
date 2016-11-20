@@ -197,14 +197,21 @@ class _GSM:
             pattern = 'tty'#'ttyUSB'
             # не используем регулярные выражения ради скорости
             if len(port) <= len(pattern) or port[:len(pattern)] != pattern: continue
+            print('Connecting to /dev/'+port)
             try:
-                print('Connected to /dev/'+port)
-                return serial.Serial(port='/dev/'+port, baudrate=115200)
-            except: 
-                print(' ===== BAD ======')
+                ser = serial.Serial(port='/dev/'+port, baudrate=115200)
+                self._write('AT', ser=ser)
+                if not self._read(ser=ser): print('--- connected, but didn\'t answer\n-----')
+                else:
+                    print('--- connected\n------------------------')
+                    return ser
+            except serial.serialutil.SerialException: 
+                print('--- not connected\n--------------------')
         return False
 
     def __init__(self, show_traffic=True, port=None):
+        self.show_traffic = show_traffic
+
         if port is None:
             self.ser = self.__autoconnect()
             if self.ser == False:
@@ -214,61 +221,56 @@ class _GSM:
 
         time.sleep(3)
 
-        self.show_traffic = show_traffic
+        print('\n')
 
-        self._write('AT')
-        if not self._read(): print(' ===== The device is silent =====')
+    def log(self, data):
+        log_file = os.path.join(os.path.dirname(__file__), 'log_gsm.txt')
+        Time = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(time.time()-time.altzone))
+        text = '\n'#"\n* %s  " % (Time)
+
+        if self.show_traffic != False and len(data) != 0:
+            if self.show_traffic == 'file':
+                if not os.path.exists(log_file):
+                    with open(log_file, 'wb') as f: pass
+                with open(log_file, 'ab') as f:
+                    f.write(bytes(text, 'utf-8'))
+                    f.write(data)
+            elif self.show_traffic == True:
+                print(data)
 
     def close(self): self.ser.close() 
 
-    def _read(self):
-        r_text = bytes()
-        while self.ser.inWaiting() > 0:
-            r_text += self.ser.read(self.ser.inWaiting())
+    def _read(self, ser=None):
+        ser = self.ser if ser is None else ser
 
-        if self.show_traffic and len(r_text) != 0:
-            print()
-            print('------ READED AS BYTES: ', r_text)
-            print('------- READED AS LIST: ', list(r_text))
+        r_text = bytes()
+        while ser.inWaiting() > 0:
+            r_text += ser.read(ser.inWaiting())
+
+            self.log(bytes('------ READED AS BYTES: ', 'utf-8') + r_text)
+            #self.log(bytes('------- READED AS LIST: ', 'utf-8') + list(r_text))
 
         return r_text
 
-    def _write(self, w_text, endline='\r'):
+    def _write(self, w_text, endline='\r', ser=None):
         if isinstance(endline, str): endline = bytes(endline, 'utf-8')
         if isinstance(w_text, str): w_text = bytes(w_text, 'utf-8')
         w_text = w_text + endline
 
-        if self.show_traffic:
-            print()
-            print('------ WROTE AS BYTES: ', w_text)
-            print('------- WROTE AS LIST: ', list(w_text))
+        self.log(bytes('------ WROTE AS BYTES: ', 'utf-8') + w_text)
+        #self.log(bytes('------- WROTE AS LIST: ', 'utf-8') + list(w_text))
 
-        self.ser.write(w_text)
+        ser = self.ser if ser is None else ser
+
+        ser.write(w_text)
         time.sleep(0.5)
-
-    def parse(self, r_text, endline='\r\n'):
-        #r_text = str(r_text, 'utf-8').strip().split(endline)
-        r_text = r_text.strip().split(bytes(endline, 'utf-8'))
-
-        if self.echo_isSet: r_text = r_text[1:]
-
-        r_text = [i for i in r_text if len(i) != 0]
-
-        if self.show_traffic:
-            print('----- READED AS R_LIST: ', r_text)
-
-        return r_text # it's r_list now
-
-    '''def __getattr__(self, name):
-        return Executor(self, name)'''
 
 class GSM(_GSM):
     def __init__(self, show_traffic=True, port=None, isSetEcho=True):
         _GSM.__init__(self, show_traffic, port)
         self.pdu_builder = SMS_PDU_Builder()
-        self.echo_isSet = isSetEcho
-        self.echo(isSetEcho)
 
+        # настройки по умолчанию
         self.sets = {
             'sms': {
                 'coding': 'ucs2',
@@ -276,54 +278,52 @@ class GSM(_GSM):
                 'sms_center_address': 'zero',
                 'is_flash': False,
             },
-            'echo': 1
+            'echo': isSetEcho
         }
 
+        self.echo(isSetEcho)
+
     def _get_sets(self, group_name, user_sets):
+        ''' Возвращает настройки по умолчанию с учётом настроек пользователя '''
         sets = copy.deepcopy(self.sets[group_name])
         sets.update(user_sets)
 
-    def read(self, isToParse='simple', isRetEcho=False):
-        return self._read()
-        '''r_text = self._read()
+    def read(self, isToParse=None):
+        r_text = self._read()
 
-        if isToParse is True:
-            echo, r_text, is_error = self.parse_read(r_text)
-            if isRetEcho: return echo, r_text, is_error
-            return r_text, is_error
-        elif isToParse == 'simple': return self.parse(r_text)
- 
-        return r_text'''
+        if isToParse in ['simple', 'get', 'test']: r_text = self.parse(r_text)
+        if isToParse == 'get': r_text = self.parse_get(r_text)
+        elif isToParse == 'test': r_text = self.parse_test(r_text)
+
+        return r_text
 
     def write(self, w_text, endline='\r'):
         self._write(w_text, endline)
 
-    '''
-    def parse_read(self, s, endline='\r\n'):
-        s = str(s, 'utf-8').strip()
-
-        if not s: return '', '', True
-
-        if self.echo_isSet: echo, answer = s.split(endline, 2)
-        else: echo, answer = (None, s)
-
-        ok_msg = 'OK'
-        if answer[-len(ok_msg):] == ok_msg:
-            answer = answer[:-len(ok_msg)]
-            is_error = False
-        else: is_error = True
-
-        return echo, answer.strip(), is_error'''
-
     def set(self, name, data=None, endline='\r'):
+        ''' установитиь значение. Если значение не указанео, то выполнить команду'''
         if isinstance(data, (int, float)): data = str(data)
         if data is not None: self.write('AT'+name+'='+data, endline)
         else: self.write('AT'+name, endline)
     def get(self, name, endline='\r'):
+        ''' вернуть текущее значение '''
         self.write('AT'+name+'?', endline)
     def test(self, name, endline='\r'):
+        ''' вернуть список возможных значений '''
         self.write('AT'+name+'=?', endline)
     def raw(self, name): self.write(name, endline='')
+
+    def parse(self, r_text, endline='\r\n'):
+        #r_text = str(r_text, 'utf-8').strip().split(endline)
+        r_text = r_text.strip().split(bytes(endline, 'utf-8'))
+
+        if self.sets['echo']: r_text = r_text[1:] # удаляем повтор команды из ответа
+
+        r_text = [i for i in r_text if len(i) != 0] # удаляем пустые строки
+
+        self.log(bytes('----- READED AS R_LIST: ', 'utf-8') + bytes(str(r_text), 'utf-8'))
+
+        return r_text # it's r_list now
 
     def parse_test(self, r_list):
         if r_list == []: return False, None
@@ -336,8 +336,7 @@ class GSM(_GSM):
             is_error = True
             values = r_list[0]
 
-        if self.show_traffic:
-            print('----- READED AS R_LIST2: ', (is_error, values))
+        self.log(bytes('----- READED AS R_LIST2: ', 'utf-8') + bytes(str((is_error, values)), 'utf-8'))
 
         return is_error, values
 
@@ -351,13 +350,12 @@ class GSM(_GSM):
             is_error = True
             value = r_list[0]
 
-        if self.show_traffic:
-            print('----- READED AS R_LIST2: ', (is_error, value))
+        self.log(bytes('----- READED AS R_LIST2: ', 'utf-8') + bytes(str((is_error, value)), 'utf-8'))
 
         return is_error, value
 
     def echo(self, isSet=None):
-        self.echo_isSet = isSet
+        self.sets['echo'] = isSet
         if isSet is None:
             self.write('ATE=?')
             return self.parse(self.read())
@@ -436,16 +434,11 @@ class GSM(_GSM):
             self.write('AT+CSDH='+str(value))
         print(self.parse(self.read()))
 
-#gsm.set.func -  установитиь значение
-#gsm.cur.func -  вернуть текущее значение
-#gsm.list.func - вернуть список возможных значений
-#gsm.exe.func -  выполнить команду
-
 if __name__ == '__main__':
 
   # Тест GSM
 
-  gsm = GSM(show_traffic=False)
+  gsm = GSM(show_traffic='file')
   try:
     #'AT+CUSD=1,"*100#",15\r\n')
     # получаем нолмер сервисного центра
@@ -490,30 +483,20 @@ if __name__ == '__main__':
     gsm.set('+CSCS') # gsm.exe
     print(gsm.parse(gsm.read()))
 
-    #gsm.write('AT+CSCS?')
     gsm.get('+CSCS')
-    r_list = gsm.parse(gsm.read())
-    #print(r_list)
-    print(gsm.parse_get(r_list))
+    print(gsm.read('get'))
 
-    #gsm.write('AT+CSCS=?')
     gsm.test('+CSCS')
-    r_list = gsm.parse(gsm.read())
-    #print(r_list)
-    print(gsm.parse_test(r_list))
+    print(gsm.read('test'))
 
     gsm.test('+CSCd') # несуществующая команда
-    r_list = gsm.parse(gsm.read())
-    #print(r_list)
-    print(gsm.parse_test(r_list))
+    print(gsm.read('test'))
 
     gsm.test('+CMGL')
-    r_list = gsm.parse(gsm.read())
-    print(gsm.parse_test(r_list))
+    print(gsm.read('test'))
 
     gsm.get('+CMGL')
-    r_list = gsm.parse(gsm.read())
-    print(gsm.parse_test(r_list))
+    print(gsm.read('get'))
 
     gsm.set('+CMGL', 4)
     r_list = gsm.parse(gsm.read())

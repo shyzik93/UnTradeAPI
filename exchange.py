@@ -360,7 +360,7 @@ if __name__ == '__main__':
 
     while True:
 
-        price, success, errs = exmo.price('eth-rub')
+        '''price, success, errs = exmo.price('eth-rub')
         if success:
             print('EXMO:', fprice(price.buy), price.sell)
             if (price.sell > threshold['eth-rub']['max_sell']): print('MAX SELL PRICE IS OBTAINED')
@@ -369,8 +369,18 @@ if __name__ == '__main__':
         price, success, errs = btce.price('eth-rub')
         if success:
             print('BTCE:', fprice(price.buy), price.sell)
-        else: print('BTCE: ERROR:', errs)
+        else: print('BTCE: ERROR:', errs)'''
+
+        price, success, errs = polo.price('zec-usdt')
+        if success:
+            print('ZCAH -> USD:', fprice(price.buy), price.sell)
+        else: print('ZCAH -> USD: ERROR:', errs)
+
+        price, success, errs = polo.price('zec-btc')
+        if success:
+            print('ZCAH -> BTC:', fprice(price.buy), price.sell)
+        else: print('ZCAH -> BTC: ERROR:', errs)
 
         print()
 
-        time.sleep(10)
+        time.sleep(30)
