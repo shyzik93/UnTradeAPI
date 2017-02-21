@@ -13,14 +13,63 @@ Thanks to authours of documentation:
 
 import os, serial, time, copy
 
-class SMS_PDU_Builder:
+class bin_tools():
+    def hex2hexString(self, HEX): # принимает байты. bytes([0x0, 0xFF, 0x1A])  -->  '00FF1A'
+        HEX = [str(hex(i))[2:] for i in HEX]
+        return ''.join([i if len(i)%2==0  else '0'+i for i in HEX])
+
+    def hexString2hex(self, hexs): # '00FF1A' -->  bytes([0x0, 0xFF, 0x1A])
+        if len(hexs) % 2 != 0: hexs = '0' + hexs
+        HEX = []
+        i = 0
+        while len(HEX) < len(hexs)/2:
+            HEX.append(hexs[i]+hexs[i+1])
+            i += 2
+        return bytes([int(i, 16) for i in HEX])
+
+class SMS_PDU_Parser(bin_tools):
+    def __init__(self):
+        pass
+
+    def parse_pdu(self, pdu):
+        cursor = 0
+
+        len_sca = pdu[cursor]
+        cursor += 1
+        sca = pdu[cursor:len_sca+cursor]
+
+        cursor += len_sca
+
+        pdu_type = pdu[cursor]
+        cursor += 1
+
+        print(sca, pdu_type)
+
+
+'''
+ [b'+CMT: ,155', b'07919772929090F340048115810004712022004024218C0B05040B8423F000032302012306246170706C69636174696F6E2F766E642E7761702E6D6D732D6D65737361676500B487AF848C8298583130343330303030303136323131313730323232303030343432303031008D9083687474703A2F2F6D6D7363723A383030322F30343330303030303136323131313730323232303030343432303031008805810302', b'+CIEV: "MESSAGE",1', b'+CMT: ,51', b'07919772929090F36404811581000471202200402421240B05040B8423F00003230202A300890E802B373936S\xa6\xa6M\xa6\xa6&\xd3\x13\xa6&\x13\x13&\xa7PN\x98\x9cE020207', b'\xf9\xff\xff\xff']
+
+'''
+
+r = SMS_PDU_Parser()
+pdu = '07919772929090F340048115810004712022004024218C0B05040B8423F000032302012306246170706C69636174696F6E2F766E642E7761702E6D6D732D6D65737361676500B487AF848C8298583130343330303030303136323131313730323232303030343432303031008D9083687474703A2F2F6D6D7363723A383030322F30343330303030303136323131313730323232303030343432303031008805810302'
+r.parse_pdu(r.hexString2hex(pdu))
+#pdu = '07919772929090F36404811581000471202200402421240B05040B8423F00003230202A300890E802B373936S\xa6\xa6M\xa6\xa6&\xd3\x13\xa6&\x13\x13&\xa7PN\x98\x9cE020207'
+#r.parse_pdu(r.hexString2hex(pdu))
+
+
+#exit()
+
+class SMS_PDU_Builder(bin_tools):
     def __init__(self):
         pass
 
     def _pack_message(message):
+        # необходимо реализовать
         return message
 
     def _build_absolute_time(self, datetime):
+        # необходимо реализовать
         pass
 
     def _build_relative_time(self, minutes):
@@ -28,7 +77,7 @@ class SMS_PDU_Builder:
         if minutes <= 60 * 12: vp = (minutes - 5) / 5                 # так как шаг 5 минут, то числа, не кратные 5, округляются в меньшую сторону.
         elif minutes <= 60 * 24: vp = (minutes-12+143*30)/30          # шаг в 30 минут
         elif minutes <= 60 * 24 * 30: vp = minutes/60/24 + 166        # шаг в 1 день
-        elif minutes <= 60 * 24 * 7 * 63 : vp = minutes/60/24/7 + 192 # шаг в 1 день
+        elif minutes <= 60 * 24 * 7 * 63 : vp = minutes/60/24/7 + 192 # шаг в 1 неделю
         else: vp = 255
 
         if vp > 255: vp = 255
@@ -58,7 +107,7 @@ class SMS_PDU_Builder:
                 1010 - ERMES
                 1111 - зарезервирован
         '''
-        type_of_number = 0x91 # интеенациональный
+        type_of_number = 0x91 # интернациональный
         # убираем '+'
         _sca = address if not address.startswith('+') else address[1:]
         #_sca = address if address[0] != '+' else address[1:]
@@ -79,7 +128,7 @@ class SMS_PDU_Builder:
         if (isinstance(delete_in_minutes, int)): VPF = '10'
         else: VPF = '11'
         PDU_type = [int(
-            '0'  + # Reply Path - запрос ответа от стороны, прин6имающей сообщение
+            '0'  + # Reply Path - запрос ответа от стороны, принимающей сообщение
             '0'  + # UDHI - Определяет наличие заголовка в UD (данных пользователя).
                    #     0 - UD содержит только данные, 1 - UD содержит в добавление к данным и заголовок 
             '0'  + # Status Report Request - запрос на получение отчёта. SRR отличается от RP: SRR запрашивает отчёт от сервисного центра, а RP - от получаемой стороны
@@ -152,7 +201,7 @@ class SMS_PDU_Builder:
         return PDU_type + MR + DA + PID + DCS + VP + UDL + UD
 
     def build_pdu(self, address, message, sms_center_address='nothing', coding='ucs2', delete_in_minutes=1440, is_flash=False):
-        ''' Формат PDU осставлен из двух полей:
+        ''' Формат PDU составлен из двух полей:
                 - SCA (Service Centre Address)  - адрес сервисного центра рассылки коротких сообщений;
                 - TPDU (Transport Protocol Data Unit) - пакет данных транспортного протокола.
             Некоторые модели мобильных телефонов и GSM-модемов не поддеррживают полный формат PDU
@@ -164,19 +213,6 @@ class SMS_PDU_Builder:
         else: sca = self._build_address(sms_center_address)
         tpdu = self._build_tpdu(address, message, coding, delete_in_minutes, is_flash)
         return bytes(sca), bytes(tpdu)
-
-    def hex2hexString(self, HEX): # принимает байты. bytes([0x0, 0xFF, 0x1A])  -->  '00FF1A'
-        HEX = [str(hex(i))[2:] for i in HEX]
-        return ''.join([i if len(i)%2==0  else '0'+i for i in HEX])
-
-    def hexString2hex(self, hexs): # '00FF1A' -->  bytes([0x0, 0xFF, 0x1A])
-        if len(hexs) % 2 != 0: hexs = '0' + hexs
-        HEX = []
-        i = 0
-        while len(HEX) < len(hexs)/2:
-            HEX.append(hexs[i]+hexs[i+1])
-            i += 2
-        return bytes([int(i, 16) for i in HEX])
 
 '''class Executor:
     def __init__(self, cls, name):
@@ -265,10 +301,16 @@ class _GSM:
         ser.write(w_text)
         time.sleep(0.5)
 
+    def guess_coding(self, message):
+        # необходимо реализовать
+        coding = ""
+        return coding
+
 class GSM(_GSM):
     def __init__(self, show_traffic=True, port=None, isSetEcho=True):
         _GSM.__init__(self, show_traffic, port)
         self.pdu_builder = SMS_PDU_Builder()
+        self.pdu_parser = SMS_PDU_Parser()
 
         # настройки по умолчанию
         self.sets = {
@@ -292,6 +334,7 @@ class GSM(_GSM):
         r_text = self._read()
 
         if isToParse in ['simple', 'get', 'test']: r_text = self.parse(r_text)
+
         if isToParse == 'get': r_text = self.parse_get(r_text)
         elif isToParse == 'test': r_text = self.parse_test(r_text)
 
@@ -330,8 +373,8 @@ class GSM(_GSM):
         if r_list[-1] == bytes('OK', 'utf-8'):
             is_error = False
             values = r_list[0].split(bytes(' ', 'utf-8'), 1)[1]
-            values = values[1:-1].split(bytes(',', 'utf-8'))
-            values = [i[1:-1] if i.startswith(bytes('"', 'utf-8')) else i for i in values]
+            #values = values[1:-1].split(bytes(',', 'utf-8'))
+            #values = [i[1:-1] if i.startswith(bytes('"', 'utf-8')) else i for i in values]
         else:
             is_error = True
             values = r_list[0]
@@ -345,7 +388,7 @@ class GSM(_GSM):
         if r_list[-1] == bytes('OK', 'utf-8'):
             is_error = False
             value = r_list[0].split(bytes(':', 'utf-8'), 1)[1].strip()
-            value = value[1:-1] if value.startswith(bytes('"', 'utf-8')) else value
+            #value = value[1:-1] if value.startswith(bytes('"', 'utf-8')) else value
         else:
             is_error = True
             value = r_list[0]
@@ -379,10 +422,6 @@ class GSM(_GSM):
 
     def sms_send(self, message, address, sets={}):
         sets = self._get_sets('sms', sets)
-        '''if 'coding' not in sets:             sets['coding'] = 'ucs2'
-        if 'delete_in_minutes' not in sets:  sets['delete_in_minutes'] = 10
-        if 'sms_center_address' not in sets: sets['sms_center_address'] = 'zero'
-        if 'is_flash' not in sets: sets['is_flash'] = False'''
 
         CONFIRM = bytes([26]) # (SUB) Ctrl-Z
         CANCEL  = bytes([27]) # ESC
@@ -393,8 +432,8 @@ class GSM(_GSM):
             self.write(bytes(message, 'utf-8'), endline=CONFIRM)
             print(self.parse(self.read()))
 
-
         elif self.SMS_mode == 'pdu':
+            if sets['coding'] == 'auto': sets['coding'] = self.guess_coding(message) # выбор оптимальной кодировки для данного сообщения
             sca, tpdu = self.pdu_builder.build_pdu(address, message, sets['sms_center_address'], sets['coding'], sets['delete_in_minutes'], sets['is_flash'])
             len_tpdu = str(len(tpdu))
             self.write('AT+CMGS='+len_tpdu)
@@ -402,20 +441,51 @@ class GSM(_GSM):
             self.write(self.pdu_builder.hex2hexString(sca + tpdu), endline=CONFIRM)
             print(self.parse(self.read()))
 
-    def sms_read(self):
-        r_text = bytes()
-        while self.ser.inWaiting() > 0:
-            r_text += self.ser.read(1)
-        return r_text
+    def sms_read_all(self, status):
+        '''  -------------------------------------------------------------------------------
+             | <status> в текстовом  |  <status>в режиме    |
+             |       режиме          |       PDU            |     Пояснение
+             -------------------------------------------------------------------------------
+             |     REC UNREAD        |           0          | Непрочитанные
+             |      REC READ         |           1          | Прочитанные
+             |     REC UNSENT        |           2          | Сохранённые неотправленные
+             |      REC SENT         |           3          | Сохранённые отправленные
+             |        ALL            |           4          | Все сообщения
+             -------------------------------------------------------------------------------
+        '''
+
+        self.write('AT+CMGL='+str(status))
+
+    def sms_read(self, index):
+        self.write('AT+CMGR'+str(index))
 
     def sms_setMode(self, mode):
-        ''' Устанавливает режим: текстовый илши PDU '''
+        ''' Устанавливает режим: текстовый или PDU '''
         if mode == 'pdu':
             self.write('AT+CMGF=0')
         elif mode == 'text':
             self.write('AT+CMGF=1')
         self.SMS_mode = mode
-        print(self.parse(self.read()))
+
+    def sms_setLogicMemory(self, *message_storages):
+        ''' Устанавливает соответствие физических секций памяти логическим.
+            Логические:
+                - первая - просмотр, чтение и удаление;
+                - вторая - сохранение и отправка исходящих сообщений
+                - третья - только что полученные сообщения. Обычно, они хранятся в первой секции.
+            Физические:
+                - SM - память SIM-карты;
+                - ME - память модема/телефона
+                - MT - общая память модема и SIM-карты
+                - BM - память для широковещательных сообщений сети
+                - SR - память для отчётов (о доставке и т. п.)
+            Любое чтение идёт только из памяти, назначенной для первой логической секции
+
+            Формат команды: AT+CPMS=message_storage1[,message_storage2[,message_storage3]]
+            То есть, вторая и третья логическая секция необязательна. '''
+
+        message_storage = ['"'+i+'"' for i in message_storages]
+        self.write('AT+CPMS='+",".join(message_storage));
 
     def setCoding(self, coding):
         ''' Устанавливает кодировку для текстового режима '''
@@ -452,14 +522,27 @@ if __name__ == '__main__':
     #print('-- ANSWER: ', gsm.echo())
     #print('-- ANSWER: ', gsm.info())
 
-    '''
     #address = '+79998887766'
 
     gsm.sms_setMode('pdu')
-    gsm.sms_send('  Latinica Кирилица Ё', address)
+    print(gsm.read())
+    gsm.sms_setLogicMemory('SM', 'ME')
+    print(gsm.read())
+
+    gsm.sms_read_all(4)
+    print(gsm.read())
+    #gsm.sms_send('  Latinica Кирилица Ё', address)
+    #gsm.sms_setLogicMemory("MT")
+    gsm.test('+CMGL')
+    print(gsm.read())
+    gsm.get('+CPMS')
+    print(gsm.read())
+
     time.sleep(5)
+
     #gsm.sms_setMode('text')
-    #gsm.sms_send('  Latinica Кирилица Ё', address)'''
+    #gsm.sms_send('  Latinica Кирилица Ё', address)
+
 
     #gsm.write('ATV1')
     #print(gsm.read())
@@ -476,7 +559,7 @@ if __name__ == '__main__':
     #gsm.showTextModeParameters()
 
     #gsm.write('AT+CSCS='+data)
-    gsm.set('+CSCS', 'GSM')
+    '''gsm.set('+CSCS', 'GSM')
     print(gsm.parse(gsm.read()))
 
     #gsm.write('AT+CSCS')
@@ -500,7 +583,7 @@ if __name__ == '__main__':
 
     gsm.set('+CMGL', 4)
     r_list = gsm.parse(gsm.read())
-    print(gsm.parse_test(r_list))
+    print(gsm.parse_test(r_list))'''
 
     #gsm.write('AT+CSCS='+data)
     #gsm.raw('AT+CSCS='+data)
