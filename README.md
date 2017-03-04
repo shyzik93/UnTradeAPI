@@ -10,7 +10,7 @@
 import exchange
 
 exmo = exchange.exchange_exmo({'key': '', secret': ''})
-btce = exchange.exchange_btc({'key': '', secret': ''})
+btce = exchange.exchange_btce({'key': '', secret': ''})
 ```
 
 Обращаться к API можно двумя способами:
