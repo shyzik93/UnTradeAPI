@@ -12,7 +12,10 @@ import serial # pip3 install pyserial
 
 class Doer:
     def __init__(self, classObj):  self.c = classObj
-    def __getattr__(self, api_name, *args): return lambda **args: self.c.shell(api_name, args)
+    def __getattr__(self, api_name, *args):
+        api_type = 'auth' if api_name.startswith('_') else 'public'
+        if api_type == 'auth': api_name = api_name[1:]
+        return lambda **args: self.c.shell(api_name, args, api_type)
 
 # Класс  протоАПИ бирж
 
@@ -106,9 +109,8 @@ class exchange_exmo(ProAPI):
         #print(self.pairs, success, errs)
         #print('-'*50)
 
-    def shell(self, api_name, api_params):
-        if api_name.startswith('_'): # Auth API
-            api_name = api_name[1:]
+    def shell(self, api_name, api_params, api_type):
+        if api_type == 'auth': # Auth API
             api_params["nonce"] = int(round(time.time()*1000))#self.get_nonce('exmo_nonce')#str(time.time()).replace('.', '')#split('.')[0]
             api_params, sign = self.sign(api_params)
             header = {"Key": self.conf['key'], "Sign":sign, "Content-type": "application/x-www-form-urlencoded"}
@@ -204,9 +206,9 @@ class exchange_btce(ProAPI):
     btce_url2 = "https://btc-e.nz/api/3/%s/%s"
     __wait_for_nonce = False # for btce
 
-    def shell(self, api_name, api_params):
+    def shell(self, api_name, api_params, api_type):
         if self.__wait_for_nonce: time.sleep(1)
-        if api_name.startswith('_'): # Auth API
+        if api_type == 'auth': # Auth API
             api_name = api_name[1:]
             nonce_v = str(time.time()).split('.')[0] #int(round(time.time()*1000))
             api_params['method'] = api_name
@@ -261,8 +263,8 @@ class exchange_poloniex(ProAPI):
     trade_url =  'https://poloniex.com/tradingApi'
     public_url = 'https://poloniex.com/public'
 
-    def shell(self, api_name, api_params):
-        if api_name.startswith('_'): # Auth API
+    def shell(self, api_name, api_params, api_type):
+        if api_type == 'auth': # Auth API
             api_name = api_name[1:]
             nonce_v = str(time.time()).split('.')[0]
             api_params['command'] = api_name
