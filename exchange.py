@@ -198,7 +198,9 @@ class exchange_exmo(ProAPI):
     def cancel_order(self, order_id):
         data, success, errors = self.do._order_cancel(order_id=order_id)
         if success:
-            if not data['result']: errors.append(data['error'])
+            if not data['result']:
+                success = False
+                errors.append(data['error'])
         return None, success, errors
 
 class exchange_btce(ProAPI):
@@ -266,9 +268,8 @@ class exchange_poloniex(ProAPI):
     def shell(self, api_name, api_params, api_type):
         if api_type == 'auth': # Auth API
             api_name = api_name[1:]
-            nonce_v = str(time.time()).split('.')[0]
             api_params['command'] = api_name
-            api_params['nonce'] = nonce_v
+            api_params['nonce'] = int(round(time.time()*1000))
             post_data, sign = self.sign(api_params)
             headers = {"Content-type" : "application/x-www-form-urlencoded",
                        "Key" : self.conf['key'],
@@ -300,38 +301,30 @@ class exchange_poloniex(ProAPI):
 
         return price, success, errors
 
-    def new_order(self, pair, action, count, price):
-        pass
+    def order(self, pair, action, count, price):
+        pair = pair.replace('-', '_').upper()
+        if price == 'market':
+            price = 0
+            action = 'market_'+ action
+        data, success, errors = self.do._order_create(pair=pair, type=action, price=price, quantity=count)
+
+        order = Order(pair, action, count, price)
+
+        if success:
+            if data['result']:
+                order.setId(data['order_id'])
+            else: errors.append(data['error'])
+
+        return order, success, errors
 
     def cancel_order(self, order_id):
-        #data, success, errors = self.do._CancelOrder(order_id=order_id)
-        #return data, success, errors
-        pass
+        data, success, errors = self.do._cancelOrder(order_number=order_id)
+        if success:
+            if data['success'] != 1:
+                success = False
+                errors.append('Ошибка отмены ордера')
+        return None, success, errors
 
-
-# ---------------------- Старый вариант -----------
-class API():
-
-  '''# ########## Высоуровневые функции ############
-
-  def PairsList(self, ec_name):
-    if ec_name == 'exmo': pairs = self.exmo_ticker().keys()
-    elif ec_name == 'btce': pairs = self.btce_info(pairs='')['pairs'].keys()
-    else: print(ec_name, '| Wrong name of exchange!')
-    return [self.denormalize_pair(ec_name, pair) for pair in pairs]
-
-  def PairsTradeInfo(self, ec_name):
-    if ec_name == 'exmo':
-      _pairs = self.exmo_ticker() # список пар с ценами
-      return {self.denormalize_pair(ec_name, pair): {'buy': float(data['sell_price']), 'sell': float(data['buy_price'])} for pair, data in _pairs.items()} # sell -> buy - это не ошибка!
-    elif ec_name == 'btce':
-      _pairs = self.btce_info(pairs='')['pairs'].keys() # список пар с настройками
-      _pairs = self.btce_ticker(pairs='-'.join(_pairs)) # передав список, получаем и список, и цены
-      for key, value in _pairs.items():
-        try: _pairs[key] = float(value)
-        except: pass
-      return {self.denormalize_pair(ec_name, pair): data for pair, data in _pairs.items()}'''
-# -------------------------------------------------
 
 if __name__ == '__main__':
 
@@ -350,7 +343,7 @@ if __name__ == '__main__':
         return '{0:<15}'.format(price_float)
 
     print(exmo.do._user_info())
-    #print(polo.do.(pairs=[]))
+    #print(polo.do._returnBalances(pairs=[]))
     print(btce.do._getInfo())
 
     '''----------------------------------------------------------
@@ -378,11 +371,11 @@ if __name__ == '__main__':
 
 
     #data, success, errs = exmo.order({'name': 'btc', 'count':10, 'price':'market'}, {'name':'usd'})
-    order, success, errs = exmo.order('ltc-rub', 'buy', 0.1, 210)
+    '''order, success, errs = exmo.order('ltc-rub', 'buy', 0.1, 210)
     print('\n', order, success, errs)
     if success:
         data, success, errs = exmo.cancel_order(order.order_id)
-        print('\n', data, success, errs)
+        print('\n', data, success, errs)'''
     #data, success, errs = exmo.order({'name': 'usd'}, {'name':'btc', 'count':10, 'price':'market'})
     #print('', data, success, errs)
 
