@@ -86,6 +86,47 @@ class Order:
     def setId(self, order_id):
         self.order_id = order_id
 
+class Balance:
+    def __init__(self, on_order=None, free=None, total=None):
+        self.on_order = on_order
+        self.free = free
+        self.total = total
+
+        # Преобразуем значения во float
+
+        if self.on_order is not None:
+            for name, value in self.on_order.items():
+                self.on_order[name] = float(self.on_order[name])
+
+        if self.free is not None:
+            for name, value in self.free.items():
+                self.free[name] = float(self.free[name])
+
+        if self.total is not None:
+            for name, value in self.total.items():
+                self.total[name] = float(self.total[name])
+
+        # Вычисляем общую сумму
+
+        if on_order is not None and free is not None and total is None:
+            self.total = {}
+            for name, value in self.on_order.items():
+                if name in self.total: self.total[name] += self.on_order[name]
+                else: self.total[name] = self.on_order[name]
+
+            for name, value in self.free.items():
+                if name in self.total: self.total[name] += self.free[name]
+                else: self.total[name] = self.free[name]
+
+
+    def get_not_null(self, type_balance):
+        balance = self.__getattribute__(type_balance)
+        new_balance = {}
+        for name, value in balance.items():
+            if value == 0: continue
+            new_balance[name] = value
+        return new_balance
+
 # Классы АПИ бирж
 
 class exchange_exmo(ProAPI):
@@ -203,6 +244,17 @@ class exchange_exmo(ProAPI):
                 errors.append(data['error'])
         return None, success, errors
 
+    def balance(self):
+        data, success, errors = self.do._user_info()
+        if success:
+            if 'reserved' in data and 'balances' in data:
+                data = Balance(data['reserved'], data['balances'])
+            else:
+                success = False
+                errors.append('Отсутствует значение "reserved" или "balances"')
+
+        return data, success, errors
+ 
 class exchange_btce(ProAPI):
     btce_url = "https://btc-e.nz/tapi"
     btce_url2 = "https://btc-e.nz/api/3/%s/%s"
@@ -211,7 +263,6 @@ class exchange_btce(ProAPI):
     def shell(self, api_name, api_params, api_type):
         if self.__wait_for_nonce: time.sleep(1)
         if api_type == 'auth': # Auth API
-            api_name = api_name[1:]
             nonce_v = str(time.time()).split('.')[0] #int(round(time.time()*1000))
             api_params['method'] = api_name
             api_params['nonce'] = nonce_v
@@ -267,14 +318,13 @@ class exchange_poloniex(ProAPI):
 
     def shell(self, api_name, api_params, api_type):
         if api_type == 'auth': # Auth API
-            api_name = api_name[1:]
             api_params['command'] = api_name
             api_params['nonce'] = int(round(time.time()*1000))
             post_data, sign = self.sign(api_params)
             headers = {"Content-type" : "application/x-www-form-urlencoded",
                        "Key" : self.conf['key'],
                        "Sign" : sign}
-            data, success, errors = self.urlopen(self.btce_url, POST=post_data, headers=headers)
+            data, success, errors = self.urlopen(self.trade_url, POST=post_data, headers=headers)
         else: # Public API
             api_params['command'] = api_name
             data, success, errors = self.urlopen(self.public_url, GET=api_params)
@@ -325,6 +375,17 @@ class exchange_poloniex(ProAPI):
                 errors.append('Ошибка отмены ордера')
         return None, success, errors
 
+    def balance(self):
+        data, success, errors = self.do._returnCompleteBalances()
+        if success:
+            free = {}
+            on_order = {}
+            for name, value in data.items():
+                free[name] = value['available']
+                on_order[name] = value['onOrders']
+            data = Balance(on_order, free)
+
+        return data, success, errors
 
 if __name__ == '__main__':
 
@@ -337,14 +398,32 @@ if __name__ == '__main__':
 
     exmo = exchange_exmo(config['exmo'])
     btce = exchange_btce(config['btce'])
-    polo = exchange_poloniex()
+    polo = exchange_poloniex(config['poloniex'])
 
     def fprice(price_float):
         return '{0:<15}'.format(price_float)
 
+    '''----------------------------------------------------------
+    -- Баланс пользователя --------------------------------------
+    ----------------------------------------------------------'''
+
+    # методы биржи
+    print('Методы биржи')
+
     print(exmo.do._user_info())
-    #print(polo.do._returnBalances(pairs=[]))
+    print(polo.do._returnCompleteBalances(pairs=[]))
     print(btce.do._getInfo())
+
+    # универсальные методы
+    print('Универсальные методы')
+
+    balance, success, errors = exmo.balance()
+    if success: print(balance.get_not_null('total'))
+
+    balance, success, errors = polo.balance()
+    if success: print(balance.get_not_null('total'))
+
+    #print(btc.balance())
 
     '''----------------------------------------------------------
     -- Монитор --------------------------------------------------
