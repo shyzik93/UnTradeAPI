@@ -90,3 +90,17 @@ if success: print('Ордер отменён')
 
  
 В любом случае возвращает None.
+
+## balance - просмотр баланса
+
+```
+balance, success, errors = exmo.balnce()
+if success: print(balance.on_order, balance.free, balance.total)
+```
+
+В случае успеха возвращает объект Balance, имеющего следующие свойства:
+- ```balance.on_order``` - балансы валютных пар, находящихся в ордерах
+- ```balance.free``` - доступные балансы валютных пар
+- ```balance.total``` - on_order + free
+
+Каждое из трёх значений (on_order, free, total) может быть равно None даже в случае успеха (зависит от биржи).
