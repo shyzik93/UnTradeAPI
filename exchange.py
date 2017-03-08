@@ -59,6 +59,10 @@ class ProAPI:
 
         return nonce
 
+    def upair2pair(self, upair, to_reverse=False):
+        pair = upair.split('-')
+        if to_reverse: pair.reverse()
+        return '_'.join(pair).upper()
 
 # Класс цены
 
@@ -167,11 +171,6 @@ class exchange_exmo(ProAPI):
     '''def upair2pair(self, upair, to_reverse=False):
         pair = upair.replace('-', '_').upper()
         return pair'''
-
-    def upair2pair(self, upair, to_reverse=False):
-        pair = upair.split('-')
-        if to_reverse: pair.reverse()
-        return '_'.join(pair).upper()
 
     '''def reverse_pair(self, pair):
         pair = pair.split('_')
@@ -335,7 +334,7 @@ class exchange_poloniex(ProAPI):
         else: return None, False, errors
 
     def price(self, upair=None): # upair is universal pair
-        pair = upair.replace('-', '_').upper()
+        pair = self.upair2pair(upair)
 
         data, success, errors = self.do.returnTicker(pairs=[pair])
         if success:
@@ -351,24 +350,27 @@ class exchange_poloniex(ProAPI):
 
         return price, success, errors
 
-    def order(self, pair, action, count, price):
-        pair = pair.replace('-', '_').upper()
-        if price == 'market':
-            price = 0
-            action = 'market_'+ action
-        data, success, errors = self.do._order_create(pair=pair, type=action, price=price, quantity=count)
+    def order(self, upair, action, count, price):
+        pair = self.upair2pair(upair)
+
+        if action == 'buy':
+            data, success, errors = self.do._buy(currencyPair=pair, rate=price, amount=count)
+        elif action == 'sell':
+            data, success, errors = self.do._sell(currencyPair=pair, rate=price, amount=count)
 
         order = Order(pair, action, count, price)
+        # если сервер даёт информацию о том, выполнен ли ордер, то её также можно сохранять в класса Order
+        print(data)
 
         if success:
-            if data['result']:
-                order.setId(data['order_id'])
-            else: errors.append(data['error'])
+            if 'orderNumber' in data:
+                order.setId(data['orderNumber'])
+            else: errors.append('Ордер не создан')
 
         return order, success, errors
 
     def cancel_order(self, order_id):
-        data, success, errors = self.do._cancelOrder(order_number=order_id)
+        data, success, errors = self.do._cancelOrder(orderNumber=order_id)
         if success:
             if data['success'] != 1:
                 success = False
@@ -410,8 +412,8 @@ if __name__ == '__main__':
     # методы биржи
     print('Методы биржи')
 
-    print(exmo.do._user_info())
-    print(polo.do._returnCompleteBalances(pairs=[]))
+    #print(exmo.do._user_info())
+    #print(polo.do._returnCompleteBalances(pairs=[]))
     print(btce.do._getInfo())
 
     # универсальные методы
@@ -450,13 +452,19 @@ if __name__ == '__main__':
 
 
     #data, success, errs = exmo.order({'name': 'btc', 'count':10, 'price':'market'}, {'name':'usd'})
-    '''order, success, errs = exmo.order('ltc-rub', 'buy', 0.1, 210)
+    '''order, success, errs = exmo.order('ltc-rub', 'buy', 0.1, 100)
     print('\n', order, success, errs)
     if success:
         data, success, errs = exmo.cancel_order(order.order_id)
         print('\n', data, success, errs)'''
     #data, success, errs = exmo.order({'name': 'usd'}, {'name':'btc', 'count':10, 'price':'market'})
     #print('', data, success, errs)
+
+    '''order, success, errs = polo.order('usdt-xmr', 'buy', 0.01, 5)
+    print('\n', order, success, errs)
+    if success:
+        data, success, errs = polo.cancel_order(order.order_id)
+        print('\n', data, success, errs)'''
 
 
     threshold = { # пороговые значения
