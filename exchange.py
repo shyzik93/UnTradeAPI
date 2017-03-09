@@ -220,7 +220,7 @@ class exchange_exmo(ProAPI):
         return pair, '', '';'''
 
     def order(self, pair, action, count, price):
-        pair = pair.replace('-', '_').upper()
+        pair = self.upair2pair(upair)
         if price == 'market':
             price = 0
             action = 'market_'+ action
@@ -253,20 +253,17 @@ class exchange_exmo(ProAPI):
                 errors.append('Отсутствует значение "reserved" или "balances"')
 
         return data, success, errors
- 
+
 class exchange_btce(ProAPI):
     btce_url = "https://btc-e.nz/tapi"
     btce_url2 = "https://btc-e.nz/api/3/%s/%s"
-    __wait_for_nonce = False # for btce
 
     def shell(self, api_name, api_params, api_type):
-        if self.__wait_for_nonce: time.sleep(1)
+        #if self.__wait_for_nonce: time.sleep(1)
         if api_type == 'auth': # Auth API
-            nonce_v = str(time.time()).split('.')[0] #int(round(time.time()*1000))
+            #nonce_v = str(time.time()).split('.')[0]
             api_params['method'] = api_name
-            api_params['nonce'] = nonce_v
-            #post_data = bytearray(parse.urlencode(api_params), 'utf-8')
-            #sign = hmac.new(bytearray(self.conf['secret'], 'utf-8'), post_data, digestmod=hashlib.sha512).hexdigest()
+            api_params['nonce'] = int(round(time.time()*1000))
             post_data, sign = self.sign(api_params)
             headers = {"Content-type" : "application/x-www-form-urlencoded",
                        "Key" : self.conf['key'],
@@ -299,16 +296,48 @@ class exchange_btce(ProAPI):
 
         return price, success, errors
 
-    def new_order(self, pair, action, count, price):
-        pair = pair.replace('-', '_').upper()
-        data, success, errors = self.do._Trade(pair=pair, type=action, rate='', amount=count)
-        return data, success, errors
+    def order(self, upair, action, count, price):
+        pair = upair.replace('-', '_')
+        data, success, errors = self.do._Trade(pair=pair, type=action, price=price, amount=count)
 
-    def new_order(self, pair, action):
-        self.do._Trade(pair='', type='', rate='', amount='')
+        order = Order(pair, action, count, price)
+
+        if success:
+            if data['success'] in ('1', 1):
+                order.setId(data['order_id'])
+            else: errors.append(data['error'])
+
+        return order, success, errors
 
     def cancel_order(self, order_id):
         data, success, errors = self.do._CancelOrder(order_id=order_id)
+        if success:
+            if data['success'] in ('1', 1):
+                success = False
+                errors.append(data)
+        return None, success, errors
+
+    def balance(self):
+        data, success, errors = self.do._getInfo()
+        if success:
+            if 'success' in data:
+                if data['success'] in ('1', 1):
+                    if 'return' in data:
+                        if 'funds' in data:
+                            data = Balance(None, data['balances'])
+                        else: 
+                            success = False
+                            errors.append('Отсутствует значение "founds"')
+                    else: 
+                        success = False
+                        errors.append('Отсутствует значение "return"')
+                else:
+                    success = False
+                    errors.append(data)
+            else:
+                success = False
+                errors.append('Отсутствует значение "success"')
+
         return data, success, errors
 
 class exchange_poloniex(ProAPI):
@@ -436,13 +465,16 @@ if __name__ == '__main__':
     print('-'*60)
 
     price, success, errs = exmo.price('btc-usd')
-    print('EXMO | ', fprice(price.buy), fprice(price.sell), fprice(price.spread))
+    if success: print('EXMO | ', fprice(price.buy), fprice(price.sell), fprice(price.spread))
+    else: print('EXMO | ', errs)
 
     price, success, errs = btce.price('btc-usd')
-    print('BTCE | ', fprice(price.buy), fprice(price.sell), fprice(price.spread))
+    if success: print('BTCE | ', fprice(price.buy), fprice(price.sell), fprice(price.spread))
+    else: print('BTCE | ', errs)
 
     price, success, errs = polo.price('usdt-btc') # usd = dollar, usdt = teather dollar
-    print('POLO | ', fprice(price.buy), fprice(price.sell), fprice(price.spread))
+    if success: print('POLO | ', fprice(price.buy), fprice(price.sell), fprice(price.spread))
+    else: print('POLO | ', errs)
 
     print('-'*60)
 
