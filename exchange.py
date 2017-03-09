@@ -43,7 +43,7 @@ class ProAPI:
         return data, sign
 
     def get_nonce(self, filename):
-        file_nonce = os.path.join(os.path.dirname(os.path.abspath('')), filename+'.txt')
+        file_nonce = os.path.join(os.path.dirname(os.path.abspath('')), 'nonce_'+filename+'.txt')
 
         if not os.path.exists(file_nonce): nonce = '1'
         else:
@@ -257,13 +257,15 @@ class exchange_exmo(ProAPI):
 class exchange_btce(ProAPI):
     btce_url = "https://btc-e.nz/tapi"
     btce_url2 = "https://btc-e.nz/api/3/%s/%s"
+    max_nonce = 4294967294
 
     def shell(self, api_name, api_params, api_type):
         #if self.__wait_for_nonce: time.sleep(1)
         if api_type == 'auth': # Auth API
             #nonce_v = str(time.time()).split('.')[0]
             api_params['method'] = api_name
-            api_params['nonce'] = int(round(time.time()*1000))
+            api_params['nonce'] = self.get_nonce('btce')#int(round(time.time()*1000))
+            if int(api_params['nonce']) > self.max_nonce: return None, False, ['Значение nonce достигло максимального значения! Пересоздайте ключи в аккаунте биржи btc-e.']
             post_data, sign = self.sign(api_params)
             headers = {"Content-type" : "application/x-www-form-urlencoded",
                        "Key" : self.conf['key'],
@@ -278,9 +280,14 @@ class exchange_btce(ProAPI):
             return (data, True, errors) if 'error' not in data else (None, False, errors+[data])
         else: return None, False, errors
 
+    def upair2pair(self, upair, to_reverse=False):
+        pair = upair.replace('rub', 'rur')
+        pair = pair.split('-')
+        if to_reverse: pair.reverse()
+        return '_'.join(pair)
+
     def price(self, upair=None): # upair is universal pair
-        pair = upair.replace('-', '_')
-        pair = pair.replace('rub', 'rur')
+        pair = self.upair2pair(upair)
 
         data, success, errors = self.do.ticker(pairs=[pair])
         if success:
@@ -297,9 +304,9 @@ class exchange_btce(ProAPI):
         return price, success, errors
 
     def order(self, upair, action, count, price):
-        pair = upair.replace('-', '_')
-        data, success, errors = self.do._Trade(pair=pair, type=action, price=price, amount=count)
+        pair = self.upair2pair(upair)
 
+        data, success, errors = self.do._Trade(pair=pair, type=action, price=price, amount=count)
         order = Order(pair, action, count, price)
 
         if success:
@@ -323,8 +330,8 @@ class exchange_btce(ProAPI):
             if 'success' in data:
                 if data['success'] in ('1', 1):
                     if 'return' in data:
-                        if 'funds' in data:
-                            data = Balance(None, data['balances'])
+                        if 'funds' in data['return']:
+                            data = Balance(None, data['return']['funds'])
                         else: 
                             success = False
                             errors.append('Отсутствует значение "founds"')
@@ -454,7 +461,8 @@ if __name__ == '__main__':
     balance, success, errors = polo.balance()
     if success: print(balance.get_not_null('total'))
 
-    #print(btc.balance())
+    balance, success, errors = btce.balance()
+    if success: print(balance.get_not_null('free'))
 
     '''----------------------------------------------------------
     -- Монитор --------------------------------------------------
