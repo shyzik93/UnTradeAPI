@@ -425,6 +425,26 @@ class exchange_poloniex(ProAPI):
 
         return data, success, errors
 
+class ExchangeMonitor:
+
+    def __init__(self, exchanges):
+        '''
+            exchanges = {ИмяБиржи: ОбъектБиржи}
+        '''
+        self.exchanges = exchanges
+
+    def balance(self):
+        r = {}
+        for name, exchange in exchanges.items():
+            r[name] = exchange.balance()
+        return r
+
+    def price(self, upair):
+        r = {}
+        for name, exchange in exchanges.items():
+            r[name] = exchange.price(upair)
+        return r
+
 if __name__ == '__main__':
 
     # Тест бирж
@@ -437,6 +457,12 @@ if __name__ == '__main__':
     exmo = exchange_exmo(config['exmo'])
     btce = exchange_btce(config['btce'])
     polo = exchange_poloniex(config['poloniex'])
+
+    monitor = ExchangeMonitor({
+        'exmo': exmo,
+        'polo': polo,
+        'btce': btce
+        })
 
     def fprice(price_float):
         return '{0:<15}'.format(price_float)
@@ -505,38 +531,3 @@ if __name__ == '__main__':
     if success:
         data, success, errs = polo.cancel_order(order.order_id)
         print('\n', data, success, errs)'''
-
-
-    threshold = { # пороговые значения
-        'eth-rub': {'max_buy':759, 'max_sell':750}
-    }
-
-    #while True:
-
-    #data, success, errs = polo.do.returnTicker()
-    #print(data, success, errs)
-
-    '''price, success, errs = exmo.price('eth-rub')
-        if success:
-            print('EXMO:', fprice(price.buy), price.sell)
-            if (price.sell > threshold['eth-rub']['max_sell']): print('MAX SELL PRICE IS OBTAINED')
-        else: print('EXMO: ERROR:', errs)
-
-        price, success, errs = btce.price('eth-rub')
-        if success:
-            print('BTCE:', fprice(price.buy), price.sell)
-        else: print('BTCE: ERROR:', errs)'''
-
-    '''price, success, errs = polo.price('usdt-zec')
-        if success:
-            print('ZEC -> USD:', fprice(price.buy), price.sell)
-        else: print('ZEC -> USD: ERROR:', errs)
-
-        price, success, errs = polo.price('btc-zec')
-        if success:
-            print('ZEC -> BTC:', fprice(price.buy), price.sell)
-        else: print('ZEC -> BTC: ERROR:', errs)
-
-        print()
-
-        time.sleep(30)'''
