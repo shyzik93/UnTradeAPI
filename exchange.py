@@ -445,6 +445,38 @@ class ExchangeMonitor:
             r[name] = exchange.price(upair)
         return r
 
+class ExchangeBot:
+    def __init__(self, ex):
+        self.ex = ex
+
+    def funcByEvent(self, event, func, *args):
+        if event['name'] == 'orderDone':
+            # это вынести в отдельный поток
+            order_id = event['data']
+            ## проверяем ордер
+            self.ex.check_order(order_id)
+            ## если выполнен, то ставим следующий ордер
+            func(*args)
+
+        event['func'] = func
+        event['args'] = args
+        event['id'] = event_id
+
+    #def strategySellAfterBuy(upair='btc-rub', count=0.01, priceBuy=65000, priceSell=71000)
+    def strategySellAfterBuy(self, upair, count, priceBuy, priceSell):
+        # выставляем ордер
+        order, success, errs = self.ex.order(upair, 'buy', count, priceBuy)
+        if not success:
+            return data, success, errs
+
+        # вычитываем сумму комиссии из единиц, которые мы купим
+        data, success, errs = self.ex.calc_taxa()
+        if not success:
+            return data, success, errs
+        count = count - (count * percent)
+        # устанавливаем собвтие на выставление ордера на продажу после исполнения ордера
+        return self.funcByEvent({'name':'orderDone', 'data':order.order_id}, self.ex.order, upair, 'sell', count, priceSell)        
+
 if __name__ == '__main__':
 
     # Тест бирж
@@ -476,10 +508,10 @@ if __name__ == '__main__':
 
     #print(exmo.do._user_info())
     #print(polo.do._returnCompleteBalances(pairs=[]))
-    print(btce.do._getInfo())
+    #print(btce.do._getInfo())
 
     # универсальные методы
-    print('Универсальные методы')
+    '''print('Универсальные методы')
 
     balance, success, errors = exmo.balance()
     if success: print(balance.get_not_null('total'))
@@ -488,7 +520,7 @@ if __name__ == '__main__':
     if success: print(balance.get_not_null('total'))
 
     balance, success, errors = btce.balance()
-    if success: print(balance.get_not_null('free'))
+    if success: print(balance.get_not_null('free'))'''
 
     '''----------------------------------------------------------
     -- Монитор --------------------------------------------------
@@ -531,3 +563,18 @@ if __name__ == '__main__':
     if success:
         data, success, errs = polo.cancel_order(order.order_id)
         print('\n', data, success, errs)'''
+
+
+    # разница цен на биржах
+
+    '''price1, success1, errs1 = exmo.price('btc-usd')
+    price2, success2, errs2 = polo.price('usdt-btc')
+    if success1 and success2:
+        print(price2.buy - price1.buy)
+    else:
+        print(errs1, '\n', errs2)'''
+
+    '''price, success, errs = exmo.price('btc-rub')
+    prev_buy = 
+    for i in range(5):
+        price, success, errs = exmo.price('btc-rub')'''
