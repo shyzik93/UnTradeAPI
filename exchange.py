@@ -243,6 +243,20 @@ class exchange_exmo(ProAPI):
                 errors.append(data['error'])
         return None, success, errors
 
+    def check_order(self, order_id):
+        data, success, errors = self.do._order_trades(order_id=order_id)
+        if success:
+            if 'trades' in data:
+                count = 0
+                trades = data['trades']
+                for trade in trades:
+                    count += float(trade['amount'])
+                    return count, success, errors
+            else:
+                success = False
+                errors.append('Отсутствует значение "reserved" или "balances"')
+        return data, success, errors
+
     def balance(self):
         data, success, errors = self.do._user_info()
         if success:
@@ -454,7 +468,7 @@ class ExchangeBot:
             # это вынести в отдельный поток
             order_id = event['data']
             ## проверяем ордер
-            self.ex.check_order(order_id)
+            count, success, errors = self.ex.check_order(order_id)
             ## если выполнен, то ставим следующий ордер
             func(*args)
 
@@ -511,16 +525,19 @@ if __name__ == '__main__':
     #print(btce.do._getInfo())
 
     # универсальные методы
-    '''print('Универсальные методы')
+    print('Универсальные методы')
 
     balance, success, errors = exmo.balance()
     if success: print(balance.get_not_null('total'))
+    else: print(balance, errors)
 
     balance, success, errors = polo.balance()
     if success: print(balance.get_not_null('total'))
+    else: print(balance, errors)
 
     balance, success, errors = btce.balance()
-    if success: print(balance.get_not_null('free'))'''
+    if success: print(balance.get_not_null('free'))
+    else: print(balance, errors)
 
     '''----------------------------------------------------------
     -- Монитор --------------------------------------------------
@@ -534,7 +551,7 @@ if __name__ == '__main__':
     if success: print('EXMO | ', fprice(price.buy), fprice(price.sell), fprice(price.spread))
     else: print('EXMO | ', errs)
 
-    price, success, errs = btce.price('btc-usd')
+    price, success, errs = btce.price('eth-rub')
     if success: print('BTCE | ', fprice(price.buy), fprice(price.sell), fprice(price.spread))
     else: print('BTCE | ', errs)
 
