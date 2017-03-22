@@ -6,7 +6,7 @@
 
 # Использование
 
-```
+```python
 import exchange
 
 exmo = exchange.exchange_exmo({'key': '', secret': ''})
@@ -21,7 +21,7 @@ polo = exchange.exchange_poloniex({'key': '', secret': ''})
 Функции обеих катагорий возвращают три значения: результат, наличие ошибки, список ошибок. Всегда в таком порядке
 
 Примеры прямого обращения к биржам:
-```
+```python
 exmo.do._user_info() # запрос информации 
 btce.do._getInfo() # то же самое
 
@@ -33,7 +33,7 @@ exmo.do.order_book(pair='USD_RUB', limit=10) # то же самое
 
 Обращение к API через универсальные функции. Вместо "exmo" можно подставлять любую биржу.
 
-```
+```python
 price = exmo.price('btc-usd') # получение цены пары. Для Exmo можно указать второй аргумент - количество значений в "стакане"
 order = exmo.order('btc-usd', 'buy', 10, 3000) # Создание ордера
 ```
@@ -42,7 +42,7 @@ order = exmo.order('btc-usd', 'buy', 10, 3000) # Создание ордера
 
 ## price - получение цены
 
-```
+```python
 price, success, errors = exmo.price(upair)
 if success: print(price.buy, price.sell, price.spread, price.mean)
 ```
@@ -59,7 +59,7 @@ if success: print(price.buy, price.sell, price.spread, price.mean)
 
 ## order - создание ордера
 
-```
+```python
 order, success, errors = exmo.order(upair, action, count, price)
 if success: print(order.order_id)
 ```
@@ -80,7 +80,7 @@ if success: print(order.order_id)
 
 ## cancel_order - отмена ордера 
 
-```
+```python
 data, success, errors = exmo.cancel_order(order_id)
 if success: print('Ордер отменён')
 ```
@@ -93,7 +93,7 @@ if success: print('Ордер отменён')
 
 ## balance - просмотр баланса
 
-```
+```python
 balance, success, errors = exmo.balnce()
 if success: print(balance.on_order, balance.free, balance.total)
 ```
