@@ -4,14 +4,17 @@
 Written by Konstantin Polyakov
 Date: August, 2016
 
-Thanks to authours of documentation:
+Thanks to authours of the documentation:
 -- embeddedpro.ucoz.ru
 -- 2150692.ru/faq/47-at-komandy-sim900
 -- 2150692.ru/faq/119-gsm-gprs-modul-aithinker-a6-bystryj-zapusk
 
 '''
 
-import os, serial, time, copy
+import os
+import serial
+import time
+import copy
 
 class bin_tools():
     def hex2hexString(self, HEX): # принимает байты. bytes([0x0, 0xFF, 0x1A])  -->  '00FF1A'
@@ -227,7 +230,7 @@ class SMS_PDU_Builder(bin_tools):
 # Класс работы с GSM-модулем
 
 class _GSM:
-    def __autoconnect(self):
+    def __autoconnect(self, baudrate):
         ports = os.listdir('/dev/')
         for port in ports:
             pattern = 'tty'#'ttyUSB'
@@ -235,7 +238,7 @@ class _GSM:
             if len(port) <= len(pattern) or port[:len(pattern)] != pattern: continue
             print('Connecting to /dev/'+port)
             try:
-                ser = serial.Serial(port='/dev/'+port, baudrate=115200)
+                ser = serial.Serial(port='/dev/'+port, baudrate=baudrate)
                 self._write('AT', ser=ser)
                 if not self._read(ser=ser): print('--- connected, but didn\'t answer\n-----')
                 else:
@@ -245,15 +248,16 @@ class _GSM:
                 print('--- not connected\n--------------------')
         return False
 
-    def __init__(self, show_traffic=True, port=None):
+    def __init__(self, baudrate, endline, show_traffic=True, port=None):
         self.show_traffic = show_traffic
+        self.endline = endline
 
         if port is None:
-            self.ser = self.__autoconnect()
+            self.ser = self.__autoconnect(baudrate=baudrate)
             if self.ser == False:
                 print('No serial ports to connect')
                 exit()
-        else: self.ser = serial.Serial(port=port, baudrate=115200)
+        else: self.ser = serial.Serial(port=port, baudrate=baudrate)
 
         time.sleep(3)
 
@@ -288,7 +292,8 @@ class _GSM:
 
         return r_text
 
-    def _write(self, w_text, endline='\r', ser=None):
+    def _write(self, w_text, endline=None, ser=None):
+        if endline is None: endline = self.endline
         if isinstance(endline, str): endline = bytes(endline, 'utf-8')
         if isinstance(w_text, str): w_text = bytes(w_text, 'utf-8')
         w_text = w_text + endline
@@ -307,11 +312,11 @@ class _GSM:
         return coding
 
 class GSM(_GSM):
-    def __init__(self, show_traffic=True, port=None, isSetEcho=True):
-        _GSM.__init__(self, show_traffic, port)
+    def __init__(self, show_traffic=True, port=None, isSetEcho=True, baudrate=115200, endline='\r'):
+        _GSM.__init__(self, baudrate, endline, show_traffic, port)
         self.pdu_builder = SMS_PDU_Builder()
         self.pdu_parser = SMS_PDU_Parser()
-
+        
         # настройки по умолчанию
         self.sets = {
             'sms': {
@@ -340,18 +345,18 @@ class GSM(_GSM):
 
         return r_text
 
-    def write(self, w_text, endline='\r'):
+    def write(self, w_text, endline=None):
         self._write(w_text, endline)
 
-    def set(self, name, data=None, endline='\r'):
+    def set(self, name, data=None, endline=None):
         ''' установитиь значение. Если значение не указанео, то выполнить команду'''
         if isinstance(data, (int, float)): data = str(data)
         if data is not None: self.write('AT'+name+'='+data, endline)
         else: self.write('AT'+name, endline)
-    def get(self, name, endline='\r'):
+    def get(self, name, endline=None):
         ''' вернуть текущее значение '''
         self.write('AT'+name+'?', endline)
-    def test(self, name, endline='\r'):
+    def test(self, name, endline=None):
         ''' вернуть список возможных значений '''
         self.write('AT'+name+'=?', endline)
     def raw(self, name): self.write(name, endline='')
@@ -505,10 +510,20 @@ class GSM(_GSM):
         print(self.parse(self.read()))
 
 if __name__ == '__main__':
+  
+  import argparse
+  
+  aparser = argparse.ArgumentParser(description='Module for AT-devi ces (GSM, WIFI, etc)')
+  aparser.add_argument('--baudrate', default=115200)
+  aparser.add_argument('--port', default=None)
+  aparser.add_argument('--endline', default='\r\n')
+
+  args = aparser.parse_args()
+
 
   # Тест GSM
 
-  gsm = GSM(show_traffic='file')
+  gsm = GSM(show_traffic='file', baudrate=args.baudrate, port=args.port, endline=args.endline)
   try:
     #'AT+CUSD=1,"*100#",15\r\n')
     # получаем нолмер сервисного центра
