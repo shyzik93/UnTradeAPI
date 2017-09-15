@@ -229,7 +229,7 @@ class SMS_PDU_Builder(bin_tools):
 
 # Класс работы с GSM-модулем
 
-class _GSM:
+class _AT:
     def __autoconnect(self, baudrate):
         ports = os.listdir('/dev/')
         for port in ports:
@@ -311,9 +311,9 @@ class _GSM:
         coding = ""
         return coding
 
-class GSM(_GSM):
+class AT(_AT):
     def __init__(self, show_traffic=True, port=None, isSetEcho=True, baudrate=115200, endline='\r'):
-        _GSM.__init__(self, baudrate, endline, show_traffic, port)
+        _AT.__init__(self, baudrate, endline, show_traffic, port)
         self.pdu_builder = SMS_PDU_Builder()
         self.pdu_parser = SMS_PDU_Parser()
         
@@ -511,105 +511,104 @@ class GSM(_GSM):
 
 if __name__ == '__main__':
   
-  import argparse
+    import argparse
   
-  aparser = argparse.ArgumentParser(description='Module for AT-devi ces (GSM, WIFI, etc)')
-  aparser.add_argument('--baudrate', default=115200)
-  aparser.add_argument('--port', default=None)
-  aparser.add_argument('--endline', default='\r\n')
+    aparser = argparse.ArgumentParser(description='Module for AT-devi ces (GSM, WIFI, etc)')
+    aparser.add_argument('--baudrate', default=115200)
+    aparser.add_argument('--port', default=None)
+    aparser.add_argument('--endline', default='\r\n')
 
-  args = aparser.parse_args()
-
-
-  # Тест GSM
-
-  gsm = GSM(show_traffic='file', baudrate=args.baudrate, port=args.port, endline=args.endline)
-  try:
-    #'AT+CUSD=1,"*100#",15\r\n')
-    # получаем нолмер сервисного центра
-    #gsm.write('AT+CSCA?')
-
-    #gsm.echo(1)
-    #print('-- ANSWER: ', gsm.at())
-    #gsm.echo(0)
-    #print('-- ANSWER: ', gsm.at())
-
-    #print('-- ANSWER: ', gsm.echo())
-    #print('-- ANSWER: ', gsm.info())
-
-    #address = '+79998887766'
-
-    gsm.sms_setMode('pdu')
-    print(gsm.read())
-    gsm.sms_setLogicMemory('SM', 'ME')
-    print(gsm.read())
-
-    gsm.sms_read_all(4)
-    print(gsm.read())
-    #gsm.sms_send('  Latinica Кирилица Ё', address)
-    #gsm.sms_setLogicMemory("MT")
-    gsm.test('+CMGL')
-    print(gsm.read())
-    gsm.get('+CPMS')
-    print(gsm.read())
-
-    time.sleep(5)
-
-    #gsm.sms_setMode('text')
-    #gsm.sms_send('  Latinica Кирилица Ё', address)
+    args = aparser.parse_args()
 
 
-    #gsm.write('ATV1')
-    #print(gsm.read())
+    # Тест GSM
 
-    #gsm.at()
-    #gsm.sms_setMode('text')
-    #gsm.setCoding('HEX')
-    #gsm.write('AT+CUSD=1,"#105#",15')
-    #time.sleep(5)
-    #raw = gsm.read()
-    #print(raw)
-    #print(gsm.parse(raw))
+    at = AT(show_traffic='file', baudrate=args.baudrate, port=args.port, endline=args.endline)
+    try:
+        #'AT+CUSD=1,"*100#",15\r\n')
+        # получаем нолмер сервисного центра
+        #at.write('AT+CSCA?')
 
-    #gsm.showTextModeParameters()
+        #at.echo(1)
+        #print('-- ANSWER: ', at.at())
+        #at.echo(0)
+        #print('-- ANSWER: ', at.at())
 
-    #gsm.write('AT+CSCS='+data)
-    '''gsm.set('+CSCS', 'GSM')
-    print(gsm.parse(gsm.read()))
+        #print('-- ANSWER: ', at.echo())
+        #print('-- ANSWER: ', at.info())
 
-    #gsm.write('AT+CSCS')
-    gsm.set('+CSCS') # gsm.exe
-    print(gsm.parse(gsm.read()))
+        #address = '+79998887766'
 
-    gsm.get('+CSCS')
-    print(gsm.read('get'))
+        at.sms_setMode('pdu')
+        print(at.read())
+        at.sms_setLogicMemory('SM', 'ME')
+        print(at.read())
 
-    gsm.test('+CSCS')
-    print(gsm.read('test'))
+        at.sms_read_all(4)
+        print(at.read())
+        #at.sms_send('  Latinica Кирилица Ё', address)
+        #at.sms_setLogicMemory("MT")
+        at.test('+CMGL')
+        print(at.read())
+        at.get('+CPMS')
+        print(at.read())
 
-    gsm.test('+CSCd') # несуществующая команда
-    print(gsm.read('test'))
+        time.sleep(5)
 
-    gsm.test('+CMGL')
-    print(gsm.read('test'))
+        #at.sms_setMode('text')
+        #at.sms_send('  Latinica Кирилица Ё', address)
 
-    gsm.get('+CMGL')
-    print(gsm.read('get'))
+        #at.write('ATV1')
+        #print(at.read())
 
-    gsm.set('+CMGL', 4)
-    r_list = gsm.parse(gsm.read())
-    print(gsm.parse_test(r_list))'''
+        #at.at()
+        #at.sms_setMode('text')
+        #at.setCoding('HEX')
+        #at.write('AT+CUSD=1,"#105#",15')
+        #time.sleep(5)
+        #raw = at.read()
+        #print(raw)
 
-    #gsm.write('AT+CSCS='+data)
-    #gsm.raw('AT+CSCS='+data)
+        #print(at.parse(raw))
+        #at.showTextModeParameters()
 
-    while 1:
-      w_text = input()
-      if w_text == 'exit': break
-      if w_text != '': gsm.write(w_text)
-      r_text = gsm.read()
-      if r_text != '': print(gsm.parse(r_text))
+        #at.write('AT+CSCS='+data)
+        '''at.set('+CSCS', 'GSM')
+        print(at.parse(at.read()))
 
-    print('\n\n---------------\nSTOPPED')
-  finally:
-    gsm.close()
+        #at.write('AT+CSCS')
+        at.set('+CSCS') # at.exe
+        print(at.parse(at.read()))
+
+        at.get('+CSCS')
+        print(at.read('get'))
+
+        at.test('+CSCS')
+        print(at.read('test'))
+
+        at.test('+CSCd') # несуществующая команда
+        print(at.read('test'))
+
+        at.test('+CMGL')
+        print(at.read('test'))
+
+        at.get('+CMGL')
+        print(at.read('get'))
+
+        at.set('+CMGL', 4)
+        r_list = at.parse(at.read())
+        print(at.parse_test(r_list))'''
+
+        #at.write('AT+CSCS='+data)
+        #at.raw('AT+CSCS='+data)
+
+        while 1:
+            w_text = input()
+            if w_text == 'exit': break
+            if w_text != '': at.write(w_text)
+            r_text = at.read()
+            if r_text != '': print(at.parse(r_text))
+
+        print('\n\n---------------\nSTOPPED')
+    finally:
+        at.close()
