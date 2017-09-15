@@ -227,7 +227,7 @@ class SMS_PDU_Builder(bin_tools):
     def __call__(self, *args, **kargs):
         return self.cls.__getattribute__(self.name2)(self.cls, *args, **kargs)'''
 
-# Класс работы с GSM-модулем
+# Класс работы с AT-командами
 
 class _AT:
     def __autoconnect(self, baudrate):
@@ -298,7 +298,7 @@ class _AT:
         if isinstance(w_text, str): w_text = bytes(w_text, 'utf-8')
         w_text = w_text + endline
 
-        self.log(bytes('------ WROTE AS BYTES: ', 'utf-8') + w_text)
+        self.log(bytes('------ WROTE AS '+str(len(w_text))+'BYTES: ', 'utf-8') + w_text)
         #self.log(bytes('------- WROTE AS LIST: ', 'utf-8') + list(w_text))
 
         ser = self.ser if ser is None else ser
@@ -314,58 +314,56 @@ class _AT:
 class AT(_AT):
     def __init__(self, show_traffic=True, port=None, isSetEcho=True, baudrate=115200, endline='\r'):
         _AT.__init__(self, baudrate, endline, show_traffic, port)
-        self.pdu_builder = SMS_PDU_Builder()
-        self.pdu_parser = SMS_PDU_Parser()
-        
-        # настройки по умолчанию
-        self.sets = {
-            'sms': {
-                'coding': 'ucs2',
-                'delete_in_minutes': 10,
-                'sms_center_address': 'zero',
-                'is_flash': False,
-            },
-            'echo': isSetEcho
-        }
-
-        self.echo(isSetEcho)
-
-    def _get_sets(self, group_name, user_sets):
-        ''' Возвращает настройки по умолчанию с учётом настроек пользователя '''
-        sets = copy.deepcopy(self.sets[group_name])
-        sets.update(user_sets)
 
     def read(self, isToParse=None):
         r_text = self._read()
 
-        if isToParse in ['simple', 'get', 'test']: r_text = self.parse(r_text)
+        if isToParse in ['simple', 'get', 'list']: r_text = self.parse(r_text)
 
         if isToParse == 'get': r_text = self.parse_get(r_text)
-        elif isToParse == 'test': r_text = self.parse_test(r_text)
+        elif isToParse == 'list': r_text = self.parse_test(r_text)
 
         return r_text
+
+    ''' Запись команд в порт '''
 
     def write(self, w_text, endline=None):
         self._write(w_text, endline)
 
-    def set(self, name, data=None, endline=None):
-        ''' установитиь значение. Если значение не указанео, то выполнить команду'''
+    def set(self, name, data=None, endline=None, ret=True):
+        ''' Устанавливает значение '''
         if isinstance(data, (int, float)): data = str(data)
-        if data is not None: self.write('AT'+name+'='+data, endline)
-        else: self.write('AT'+name, endline)
-    def get(self, name, endline=None):
-        ''' вернуть текущее значение '''
+        if data is not None:
+            self.write('AT'+name+'='+data, endline)
+        if ret: return self.parse(self.read())
+
+    def exe(self, name, data=None, endline=None, ret=True):
+        ''' Выполняет команду'''
+        self.write('AT'+name, endline)
+        if ret: return self.parse(self.read())
+
+    def get(self, name, endline=None, ret=True):
+        ''' Возвращает текущее значение '''
         self.write('AT'+name+'?', endline)
-    def test(self, name, endline=None):
-        ''' вернуть список возможных значений '''
+        if ret: return self.parse(self.read())
+
+    def list(self, name, endline=None, ret=True):
+        ''' Возвращает список возможных значений '''
         self.write('AT'+name+'=?', endline)
-    def raw(self, name): self.write(name, endline='')
+        if ret: return self.parse(self.read())
+
+    def raw(self, name, ret=True):
+        ''' вручную '''
+        self.write(name, endline='')
+        if ret: return self.parse(self.read())
+
+    ''' Разбор ответа '''
 
     def parse(self, r_text, endline='\r\n'):
         #r_text = str(r_text, 'utf-8').strip().split(endline)
         r_text = r_text.strip().split(bytes(endline, 'utf-8'))
 
-        if self.sets['echo']: r_text = r_text[1:] # удаляем повтор команды из ответа
+        if hasattr(self, 'sets') and self.sets['echo']: r_text = r_text[1:] # удаляем повтор команды из ответа
 
         r_text = [i for i in r_text if len(i) != 0] # удаляем пустые строки
 
@@ -373,7 +371,7 @@ class AT(_AT):
 
         return r_text # it's r_list now
 
-    def parse_test(self, r_list):
+    def parse_list(self, r_list):
         if r_list == []: return False, None
         if r_list[-1] == bytes('OK', 'utf-8'):
             is_error = False
@@ -402,6 +400,58 @@ class AT(_AT):
 
         return is_error, value
 
+    ''' Общие для всех устройств команды '''
+
+    def at(self):
+        self.write('AT')
+        return self.parse(self.read())
+
+    '''def build_command(self, action, command, value=''):
+        if isinstance(value, (int, float)): value = str(value)
+
+        if action in ['cur', 'get']: # текущее значение
+            postfix = '?'
+        elif action=='list': # список возможных значений
+            postfix = '=?'
+        elif action=='exe': # выполнить команду
+            postfix = ''
+        elif action=='set': # изменить текущее значение
+            postfix = '='+str(value)
+
+        return command+postfix'''
+
+
+# Классы с описанием AT-команд различных устройств
+
+class GSM(AT):
+    '''
+        - AT+CSDH - Параметры текстового режима СМС
+    '''
+  
+    def __init__(self, show_traffic=True, port=None, isSetEcho=True, baudrate=115200, endline='\r'):
+        AT.__init__(self, show_traffic, port, isSetEcho, baudrate, endline)
+
+        self.pdu_builder = SMS_PDU_Builder()
+        self.pdu_parser = SMS_PDU_Parser()
+        
+        # настройки по умолчанию
+        self.sets = {
+            'sms': {
+                'coding': 'ucs2',
+                'delete_in_minutes': 10,
+                'sms_center_address': 'zero',
+                'is_flash': False,
+            },
+            'echo': isSetEcho
+        }
+
+        self.echo(isSetEcho)
+
+    def _get_sets(self, group_name, user_sets):
+        ''' Возвращает настройки по умолчанию с учётом настроек пользователя '''
+        sets = copy.deepcopy(self.sets[group_name])
+        sets.update(user_sets)
+
     def echo(self, isSet=None):
         self.sets['echo'] = isSet
         if isSet is None:
@@ -416,14 +466,7 @@ class AT(_AT):
             return self.parse(self.read())
 
     def info(self):
-        self.write('ATI')
-        return self.parse(self.read())
-
-    def at(self):
-        self.write('AT')
-        return self.parse(self.read())
-
-    # ---- высокий уровень
+        return self.exe('I')
 
     def sms_send(self, message, address, sets={}):
         sets = self._get_sets('sms', sets)
@@ -495,36 +538,68 @@ class AT(_AT):
     def setCoding(self, coding):
         ''' Устанавливает кодировку для текстового режима '''
         # кодировка текстового режима. Доступны: GSM, UCS2, HEX
-        self.write('AT+CSCS="'+coding+'"')
-        print(self.parse(self.read()))
+        print(self.set('+CSCS', '"'+coding+'"'))
 
-    def TextModeParameters(self, action, value):
-        if action=='get':
-            self.write('AT+CSDH?')
-        elif action=='list':
-            self.write('AT+CSDH=?')
-        elif action=='exe':
-            self.write('AT+CSDH')
-        elif action=='set':
-            self.write('AT+CSDH='+str(value))
-        print(self.parse(self.read()))
+class WIFI(AT):
+    ''' http://www.instructables.com/id/Getting-Started-with-the-ESP8266-ESP-12/
+    
+        # AT-команды WI-FI-модуля ESP8266-12F компании AI-Thinker
+
+        - AT+GMR - возвращает информацию о молдуле
+        - AT+CWMODE - режим модуля. Принимает значения: 1 - , 2 - , 3 - WI-FI-клиент и WI-FI-точка доступа одновременно.
+        - AT+CWLAP - список найденных точек доступа
+        - AT+CWJAP="your_network_name","your_wifi_network_password" - Пождключает модуль к WI-FI точке доступа
+        - AT+CIFSR - возвращает IP-адрес модуля как вторую строку и gateway IP-адрес, если устройство подключено.
+
+        - AT+CIPSTART="TCP","example.com",80 - инициализация tcp-соединения
+    '''
+
+    def __init__(self, show_traffic=True, port=None, isSetEcho=True, baudrate=115200, endline='\r\n'):
+        AT.__init__(self, show_traffic, port, isSetEcho, baudrate, endline)
+
+    def info(self):
+        return self.exe('+GMR')
+
+    def browser_init(self, domain, port=80):
+        if isinstance(port, (int, float)): port = str(port)
+        print(self.set('+CIPSTART', '"TCP","'+domain+'",'+port))
+        self.browser_host = domain
+        
+    def browser_go(self, method, path):
+         data = method +' '+ path + ' HTTP/1.1\nHost: '+self.browser_host+'\n\n'
+         print(self.set('+CIPSEND', len(data)+len(self.endline))) # 2 байта символов '\r\n'
+         time.sleep(0.2)
+         print(self.raw(data+self.endline))
+         
 
 if __name__ == '__main__':
   
     import argparse
   
     aparser = argparse.ArgumentParser(description='Module for AT-devi ces (GSM, WIFI, etc)')
-    aparser.add_argument('--baudrate', default=115200)
+    aparser.add_argument('--baudrate', default=None)
     aparser.add_argument('--port', default=None)
-    aparser.add_argument('--endline', default='\r\n')
+    aparser.add_argument('--endline', default=None)
 
     args = aparser.parse_args()
-
+    _args = {}
+    if not (args.port is None): _args['port'] = args.port
+    if not (args.endline is None): _args['endline'] = args.endline
+    if not (args.baudrate is None): _args['baudrate'] = args.baudrate
 
     # Тест GSM
 
-    at = AT(show_traffic='file', baudrate=args.baudrate, port=args.port, endline=args.endline)
+    at = WIFI(show_traffic='file', **_args)
     try:
+        print(at.info())
+        #print(at.exe('+CWLAP'))
+
+        print(at.set('+CWJAP', '"Name network","password"'))
+        time.sleep(10);
+
+        at.browser_init('dosmth.ru')
+        at.browser_go('GET', '/iot.php?temp=26.90')
+      
         #'AT+CUSD=1,"*100#",15\r\n')
         # получаем нолмер сервисного центра
         #at.write('AT+CSCA?')
@@ -539,7 +614,7 @@ if __name__ == '__main__':
 
         #address = '+79998887766'
 
-        at.sms_setMode('pdu')
+        '''at.sms_setMode('pdu')
         print(at.read())
         at.sms_setLogicMemory('SM', 'ME')
         print(at.read())
@@ -548,12 +623,12 @@ if __name__ == '__main__':
         print(at.read())
         #at.sms_send('  Latinica Кирилица Ё', address)
         #at.sms_setLogicMemory("MT")
-        at.test('+CMGL')
+        at.list('+CMGL')
         print(at.read())
         at.get('+CPMS')
         print(at.read())
 
-        time.sleep(5)
+        time.sleep(5)'''
 
         #at.sms_setMode('text')
         #at.sms_send('  Latinica Кирилица Ё', address)
@@ -570,7 +645,7 @@ if __name__ == '__main__':
         #print(raw)
 
         #print(at.parse(raw))
-        #at.showTextModeParameters()
+        #print(at.exe('+CSDH'))
 
         #at.write('AT+CSCS='+data)
         '''at.set('+CSCS', 'GSM')
@@ -583,21 +658,21 @@ if __name__ == '__main__':
         at.get('+CSCS')
         print(at.read('get'))
 
-        at.test('+CSCS')
-        print(at.read('test'))
+        at.list('+CSCS')
+        print(at.read('list'))
 
-        at.test('+CSCd') # несуществующая команда
-        print(at.read('test'))
+        at.list('+CSCd') # несуществующая команда
+        print(at.read('list'))
 
-        at.test('+CMGL')
-        print(at.read('test'))
+        at.list('+CMGL')
+        print(at.read('list'))
 
         at.get('+CMGL')
         print(at.read('get'))
 
         at.set('+CMGL', 4)
         r_list = at.parse(at.read())
-        print(at.parse_test(r_list))'''
+        print(at.parse_list(r_list))'''
 
         #at.write('AT+CSCS='+data)
         #at.raw('AT+CSCS='+data)
