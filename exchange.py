@@ -79,13 +79,18 @@ class Price:
         self.mean = (self.buy + self.sell) / 2 # среднее арифметическое
 
 class Order:
-    def __init__(self, upair, action, count, price):
+    def __init__(self, ex, upair, action, count, price):
         self.upair = upair
         self.action = action
         self.count = count
         self.price = price
 
         self.order_id = None
+
+        # расчитываем количество после вычитания комиссии
+        percent, success, errors = ex.calc_tax()
+        if success: self.real_count = count - (count * percent / 100)
+        else: self.real_count = None
 
     def setId(self, order_id):
         self.order_id = order_id
@@ -219,19 +224,21 @@ class exchange_exmo(ProAPI):
 
         return pair, '', '';'''
 
-    def order(self, pair, action, count, price):
+    def order(self, upair, action, count, price):
         pair = self.upair2pair(upair)
         if price == 'market':
             price = 0
             action = 'market_'+ action
         data, success, errors = self.do._order_create(pair=pair, type=action, price=price, quantity=count)
 
-        order = Order(pair, action, count, price)
+        order = Order(self, pair, action, count, price)
 
         if success:
             if data['result']:
                 order.setId(data['order_id'])
-            else: errors.append(data['error'])
+            else:
+                success = False
+                errors.append(data['error'])
 
         return order, success, errors
 
@@ -244,7 +251,19 @@ class exchange_exmo(ProAPI):
         return None, success, errors
 
     def check_order(self, order_id):
-        data, success, errors = self.do._order_trades(order_id=order_id)
+        order_data = {'has_done': True, 'count_done':0}
+
+        data, success, errors = self.do._user_open_orders()
+        if success:
+            for pair in data:
+                for order in data[pair]:
+                    if int(order['order_id']) == int(order_id):
+                        order_data['has_done'] = False
+                        break
+
+        return order_data, success, []
+
+        '''data, success, errors = self.do._order_trades(order_id=order_id)
         if success:
             if 'trades' in data:
                 count = 0
@@ -255,7 +274,7 @@ class exchange_exmo(ProAPI):
             else:
                 success = False
                 errors.append('Отсутствует значение "reserved" или "balances"')
-        return data, success, errors
+        return data, success, errors'''
 
     def balance(self):
         data, success, errors = self.do._user_info()
@@ -267,6 +286,10 @@ class exchange_exmo(ProAPI):
                 errors.append('Отсутствует значение "reserved" или "balances"')
 
         return data, success, errors
+
+    def calc_tax(self):
+        ''' возвращает процент комиссси за сделку '''
+        return 0.2, True, []
 
 class exchange_btce(ProAPI):
     btce_url = "https://btc-e.nz/tapi"
@@ -321,7 +344,7 @@ class exchange_btce(ProAPI):
         pair = self.upair2pair(upair)
 
         data, success, errors = self.do._Trade(pair=pair, type=action, price=price, amount=count)
-        order = Order(pair, action, count, price)
+        order = Order(self, pair, action, count, price)
 
         if success:
             if data['success'] in ('1', 1):
@@ -360,6 +383,10 @@ class exchange_btce(ProAPI):
                 errors.append('Отсутствует значение "success"')
 
         return data, success, errors
+
+    def calc_tax(self):
+        ''' возвращает процент комиссси за сделку '''
+        return 0, True, []
 
 class exchange_poloniex(ProAPI):
     trade_url =  'https://poloniex.com/tradingApi'
@@ -408,7 +435,7 @@ class exchange_poloniex(ProAPI):
         elif action == 'sell':
             data, success, errors = self.do._sell(currencyPair=pair, rate=price, amount=count)
 
-        order = Order(pair, action, count, price)
+        order = Order(self, pair, action, count, price)
         # если сервер даёт информацию о том, выполнен ли ордер, то её также можно сохранять в класса Order
         print(data)
 
@@ -439,6 +466,10 @@ class exchange_poloniex(ProAPI):
 
         return data, success, errors
 
+    def calc_tax(self):
+        ''' возвращает процент комиссси за сделку '''
+        return 0, True, []
+
 class ExchangeMonitor:
 
     def __init__(self, exchanges):
@@ -465,12 +496,11 @@ class ExchangeBot:
 
     def funcByEvent(self, event, func, *args):
         if event['name'] == 'orderDone':
-            # это вынести в отдельный поток
-            order_id = event['data']
+            order = event['data']
             ## проверяем ордер
-            count, success, errors = self.ex.check_order(order_id)
+            count, success, errors = self.ex.check_order(order.order_id)
             ## если выполнен, то ставим следующий ордер
-            func(*args)
+            if count == order.real_count: func(*args)
 
         event['func'] = func
         event['args'] = args
@@ -478,18 +508,28 @@ class ExchangeBot:
 
     #def strategySellAfterBuy(upair='btc-rub', count=0.01, priceBuy=65000, priceSell=71000)
     def strategySellAfterBuy(self, upair, count, priceBuy, priceSell):
+        ''' После исполнения ордера на покупку выставляет ордер на продажу. '''
         # выставляем ордер
         order, success, errs = self.ex.order(upair, 'buy', count, priceBuy)
         if not success:
-            return data, success, errs
+            return order, success, errs
 
-        # вычитываем сумму комиссии из единиц, которые мы купим
-        data, success, errs = self.ex.calc_taxa()
-        if not success:
-            return data, success, errs
-        count = count - (count * percent)
-        # устанавливаем собвтие на выставление ордера на продажу после исполнения ордера
-        return self.funcByEvent({'name':'orderDone', 'data':order.order_id}, self.ex.order, upair, 'sell', count, priceSell)        
+        # устанавливаем собвтие на выставление ордера на продажу после исполнения ордера на покупку        
+        #return self.funcByEvent({'name':'orderDone', 'data':order}, self.ex.order, upair, 'sell', order.real_count, priceSell)
+
+        ## если выполнен, то ставим следующий ордер
+        while 1:
+            order_data, success, errors = self.ex.check_order(order.order_id)
+            if order_data['has_done']:
+                self.ex.order(upair, 'sell', order.real_count, priceSell)
+                break
+            print("куплено {0} из {1}".format(order_data, order.real_count))
+            time.sleep(5)
+
+    def strategyBeFirst(self, upair, action, count, price, extremum):
+        ''' Переставляет ордер в стакане так, чтобы он всегда был первым (наверху) '''
+        pass
+
 
 if __name__ == '__main__':
 
@@ -595,3 +635,24 @@ if __name__ == '__main__':
     prev_buy = 
     for i in range(5):
         price, success, errs = exmo.price('btc-rub')'''
+
+    '''----------------------------------------------------------
+    -- Боты ---------------------------------------------------
+    ----------------------------------------------------------'''
+    exmo_bot = ExchangeBot(exmo)
+    res = exmo_bot.strategySellAfterBuy('btc-rub', 0.005, 54000, 55000)
+    print(res)
+
+'''
+    exmo.order('ltc-usd', 'buy', 0.1, 100)
+    polo.order('ltc-usdt', 'buy', 0.1, 100)
+    btce.order('ltc-usd', 'buy', 0.1, 100)
+
+    exmo.cancel_order(order_id)
+    polo.cancel_order(order_id)
+    btce.cancel_order(order_id)
+
+    exmo.price('ltc-usd')
+    polo.price('ltc-usdt')
+    btce.price('ltc-usd')
+'''
