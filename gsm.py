@@ -239,8 +239,9 @@ class _AT:
             print('Connecting to /dev/'+port)
             try:
                 ser = serial.Serial(port='/dev/'+port, baudrate=baudrate)
-                self._write('AT', ser=ser)
-                if not self._read(ser=ser): print('--- connected, but didn\'t answer\n-----')
+                #self._write('AT', ser=ser)
+                #if not self._read(ser=ser): print('--- connected, but didn\'t answer\n-----')
+                if not self._send('AT', self.endline, ser, 10): print('--- connected, but didn\'t answer\n-----')
                 else:
                     print('--- connected\n------------------------')
                     return ser
@@ -304,7 +305,53 @@ class _AT:
         ser = self.ser if ser is None else ser
 
         ser.write(w_text)
-        time.sleep(0.5)
+        #time.sleep(0.5)
+        return w_text
+
+    def parse(self, r_text, endline='\r\n'):
+        #r_text = str(r_text, 'utf-8').strip().split(endline)
+        r_text = r_text.strip().split(bytes(endline, 'utf-8'))
+
+        if hasattr(self, 'sets') and self.sets['echo']: r_text = r_text[1:] # удаляем повтор команды из ответа
+
+        r_text = [i for i in r_text if len(i) != 0] # удаляем пустые строки
+
+        self.log(bytes('----- READED AS R_LIST: ', 'utf-8') + bytes(str(r_text), 'utf-8'))
+
+        return r_text # it's r_list now
+
+    def _send(self, command, endline, ser, c):
+        command = self._write(command, ser=ser)
+        #time.sleep(0.5)
+        r = self.parse(self._read(ser=ser))
+        rs = []
+        x = 0
+        step = 1
+        while 1:
+            if step == 1:
+                if r and r[0].strip() == command[:-1].strip():
+                    if len(r) == 1:
+                        step = 2
+                        x = 0
+                    else:
+                        time.sleep(0.2)
+                        return r
+            elif step == 2:
+                if r:
+                    time.sleep(0.2)
+                    return r
+            #print('2', command, r)
+            time.sleep(0.5)
+            r = self.parse(self._read(ser=ser))
+            rs += r
+            x += 1
+            if x == c: return rs
+
+    def send(self, command, endline=None, ser=None, c=100, nowait=False):
+        while 1 and not nowait:
+            r = self._send('AT', endline=endline, ser=ser, c=c)
+            if b'busy p...' not in r and b'busy s...' not in r: break
+        return self._send(command, endline=endline, ser=ser, c=c)
 
     def guess_coding(self, message):
         # необходимо реализовать
@@ -334,42 +381,30 @@ class AT(_AT):
         ''' Устанавливает значение '''
         if isinstance(data, (int, float)): data = str(data)
         if data is not None:
-            self.write('AT'+name+'='+data, endline)
-        if ret: return self.parse(self.read())
+            return self.send('AT'+name+'='+data, endline)
+        #if ret: return self.parse(self.read())
 
     def exe(self, name, data=None, endline=None, ret=True):
         ''' Выполняет команду'''
-        self.write('AT'+name, endline)
-        if ret: return self.parse(self.read())
+        return self.send('AT'+name, endline)
+        #if ret: return self.parse(self.read())
 
     def get(self, name, endline=None, ret=True):
         ''' Возвращает текущее значение '''
-        self.write('AT'+name+'?', endline)
-        if ret: return self.parse(self.read())
+        return self.send('AT'+name+'?', endline)
+        #if ret: return self.parse(self.read())
 
     def list(self, name, endline=None, ret=True):
         ''' Возвращает список возможных значений '''
-        self.write('AT'+name+'=?', endline)
-        if ret: return self.parse(self.read())
+        return self.send('AT'+name+'=?', endline)
+        #if ret: return self.parse(self.read())
 
-    def raw(self, name, ret=True):
+    def raw(self, name, ret=True, nowait=False):
         ''' вручную '''
-        self.write(name, endline='')
-        if ret: return self.parse(self.read())
+        return self.send(name, endline='', nowait=nowait)
+        #if ret: return self.parse(self.read())
 
     ''' Разбор ответа '''
-
-    def parse(self, r_text, endline='\r\n'):
-        #r_text = str(r_text, 'utf-8').strip().split(endline)
-        r_text = r_text.strip().split(bytes(endline, 'utf-8'))
-
-        if hasattr(self, 'sets') and self.sets['echo']: r_text = r_text[1:] # удаляем повтор команды из ответа
-
-        r_text = [i for i in r_text if len(i) != 0] # удаляем пустые строки
-
-        self.log(bytes('----- READED AS R_LIST: ', 'utf-8') + bytes(str(r_text), 'utf-8'))
-
-        return r_text # it's r_list now
 
     def parse_list(self, r_list):
         if r_list == []: return False, None
@@ -405,6 +440,19 @@ class AT(_AT):
     def at(self):
         self.write('AT')
         return self.parse(self.read())
+
+    def echo(self, isSet=None):
+        self.sets['echo'] = isSet
+        if isSet is None:
+            self.write('ATE=?')
+            return self.parse(self.read())
+
+        if isSet:
+            self.write('ATE1')
+            return self.parse(self.read())
+        else:
+            self.write('ATE0')
+            return self.parse(self.read())
 
     '''def build_command(self, action, command, value=''):
         if isinstance(value, (int, float)): value = str(value)
@@ -451,19 +499,6 @@ class GSM(AT):
         ''' Возвращает настройки по умолчанию с учётом настроек пользователя '''
         sets = copy.deepcopy(self.sets[group_name])
         sets.update(user_sets)
-
-    def echo(self, isSet=None):
-        self.sets['echo'] = isSet
-        if isSet is None:
-            self.write('ATE=?')
-            return self.parse(self.read())
-
-        if isSet:
-            self.write('ATE1')
-            return self.parse(self.read())
-        else:
-            self.write('ATE0')
-            return self.parse(self.read())
 
     def info(self):
         return self.exe('I')
@@ -542,16 +577,17 @@ class GSM(AT):
 
 class WIFI(AT):
     ''' http://www.instructables.com/id/Getting-Started-with-the-ESP8266-ESP-12/
+        http://www.ctr-electronics.com/downloads/pdf/4A-ESP8266__AT_Instruction_Set__EN_v0.40.pdf
     
         # AT-команды WI-FI-модуля ESP8266-12F компании AI-Thinker
 
         - AT+GMR - возвращает информацию о молдуле
-        - AT+CWMODE - режим модуля. Принимает значения: 1 - , 2 - , 3 - WI-FI-клиент и WI-FI-точка доступа одновременно.
+        - AT+CWMODE - режим модуля. Принимает значения: 1 - клиент, 2 - точка доступа, 3 - WI-FI-клиент и WI-FI-точка доступа одновременно.
         - AT+CWLAP - список найденных точек доступа
         - AT+CWJAP="your_network_name","your_wifi_network_password" - Пождключает модуль к WI-FI точке доступа
         - AT+CIFSR - возвращает IP-адрес модуля как вторую строку и gateway IP-адрес, если устройство подключено.
 
-        - AT+CIPSTART="TCP","example.com",80 - инициализация tcp-соединения
+        - AT+CWQAP - отключится от точки доступа
     '''
 
     def __init__(self, show_traffic=True, port=None, isSetEcho=True, baudrate=115200, endline='\r\n'):
@@ -566,11 +602,29 @@ class WIFI(AT):
         self.browser_host = domain
         
     def browser_go(self, method, path):
-         data = method +' '+ path + ' HTTP/1.1\nHost: '+self.browser_host+'\n\n'
-         print(self.set('+CIPSEND', len(data)+len(self.endline))) # 2 байта символов '\r\n'
-         time.sleep(0.2)
-         print(self.raw(data+self.endline))
-         
+        data = method +' '+ path + ' HTTP/1.1\nHost: '+self.browser_host+'\n\n' + self.endline
+        print(self.set('+CIPSEND', len(data))) # 2 байта символов '\r\n'
+        print(self.raw(data, nowait=True))
+
+    def server_start(self):
+        print(self.set('+CIPMUX', '1')) # рахрешавем множественные соединения
+        print(self.set('+CIPSERVER', '1,80')) # запускаем сервер
+
+    def server_stop(self):
+        print(self.set('+CIPSERVER', '0,80'))
+        print(self.set('+CIPMUX', '0'))
+
+    def server_send(self, connect_id, data, headers=None):
+        if isinstance(connect_id, (int, float)): connect_id = str(connect_id)
+
+        if headers:
+            headers = '\n'.join(headers)
+            headers = '\n' + headers
+        else: headers = ''
+
+        data = "HTTP/1.1 200 OK"+headers+"\n\n"+data+"\n" + self.endline
+        print(at.set('+CIPSENDEX', connect_id+','+str(len(data))))
+        print(at.raw(data, nowait=True))
 
 if __name__ == '__main__':
   
@@ -595,10 +649,19 @@ if __name__ == '__main__':
         #print(at.exe('+CWLAP'))
 
         print(at.set('+CWJAP', '"Name network","password"'))
-        time.sleep(10);
 
-        at.browser_init('dosmth.ru')
-        at.browser_go('GET', '/iot.php?temp=26.90')
+        '''r = at.parse(at.read())
+        while r and r[-1] == 'busy p...':
+            time.sleep(1)
+            print('c', r)
+            r = at.parse(at.read())'''
+
+        
+        #time.sleep(10);
+
+        #at.browser_init('dosmth.ru')
+        #at.browser_go('GET', '/iot.php?temp='+str(time.time()))
+        at.server_start()
       
         #'AT+CUSD=1,"*100#",15\r\n')
         # получаем нолмер сервисного центра
@@ -680,9 +743,15 @@ if __name__ == '__main__':
         while 1:
             w_text = input()
             if w_text == 'exit': break
-            if w_text != '': at.write(w_text)
+            if w_text != '': print(at.send(w_text, nowait=True))
             r_text = at.read()
-            if r_text != '': print(at.parse(r_text))
+            if r_text != '':
+                print(at.parse(r_text))
+                if b'0,CONNECT' in r_text:
+                    at.server_send(0, '<h1>hello to all</h1><br>:-)', ['Content-Type: text/html;'])
+                    #data = "HTTP/1.1 200 OK\nContent-Type: text/html;\n\nhello\n"
+                    #print(at.send('AT+CIPSENDEX=0,'+str(len(data)+2)))
+                    #print(at.send(data, nowait=True))
 
         print('\n\n---------------\nSTOPPED')
     finally:
