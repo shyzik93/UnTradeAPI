@@ -476,7 +476,7 @@ class GSM(AT):
         - AT+CSDH - Параметры текстового режима СМС
     '''
   
-    def __init__(self, show_traffic=True, port=None, isSetEcho=True, baudrate=115200, endline='\r'):
+    def __init__(self, show_traffic=True, port=None, isSetEcho=True, baudrate=115200, endline='\r\n'):
         AT.__init__(self, show_traffic, port, isSetEcho, baudrate, endline)
 
         self.pdu_builder = SMS_PDU_Builder()
@@ -499,6 +499,7 @@ class GSM(AT):
         ''' Возвращает настройки по умолчанию с учётом настроек пользователя '''
         sets = copy.deepcopy(self.sets[group_name])
         sets.update(user_sets)
+        return sets
 
     def info(self):
         return self.exe('I')
@@ -578,6 +579,29 @@ class GSM(AT):
 class WIFI(AT):
     ''' http://www.instructables.com/id/Getting-Started-with-the-ESP8266-ESP-12/
         http://www.ctr-electronics.com/downloads/pdf/4A-ESP8266__AT_Instruction_Set__EN_v0.40.pdf
+        
+        AT version:0.60.0.0(Jan 29 2016 15:10:17)
+        SDK version:1.5.2(7eee54f4)
+        Ai-Thinker Technology Co. Ltd.
+        May  5 2016 17:30:30
+        
+        programming:
+        https://geektimes.ru/post/241842/
+        https://github.com/pfalcon/esp-open-sdk
+        http://wikihandbk.com/wiki/ESP8266:%D0%9F%D1%80%D0%BE%D1%88%D0%B8%D0%B2%D0%BA%D0%B8/%D0%9A%D0%B0%D0%BA_%D1%83%D1%81%D1%82%D0%B0%D0%BD%D0%BE%D0%B2%D0%B8%D1%82%D1%8C_%D0%B2_IDE_Arduino_%D0%B0%D0%B4%D0%B4%D0%BE%D0%BD_%D0%B4%D0%BB%D1%8F_ESP8266
+        http://wikihandbk.com/wiki/ESP8266:%D0%9F%D1%80%D0%BE%D1%88%D0%B8%D0%B2%D0%BA%D0%B8/Arduino
+        "…. stopped with the error ….. error: could not find GNU libtool >= 1.5.26
+         just in case for others … this can be solved by: sudo apt-get install libtool-bin"
+         
+        
+        https://habrahabr.ru/post/255135/
+        https://habrahabr.ru/search/page2/?q=%5Besp8266%5D&target_type=posts&flow=&order_by=relevance
+        https://esp8266.ru/
+        
+        http://hobbytech.com.ua/%D0%B7%D0%BD%D0%B0%D0%BA%D0%BE%D0%BC%D0%B8%D0%BC%D1%81%D1%8F-%D1%81-%D0%BC%D0%BE%D0%B4%D1%83%D0%BB%D0%B5%D0%BC-esp8266-%D0%BF%D0%BE%D0%B4%D1%80%D0%BE%D0%B1%D0%BD%D0%B5%D0%B5/
+        http://hobbytech.com.ua/shop/arduino/shields/esp8266mod/
+        
+        https://leanpub.com/cart_purchases/euh_7R94pzFyh_QFI95eBg/thankyou
     
         # AT-команды WI-FI-модуля ESP8266-12F компании AI-Thinker
 
@@ -643,12 +667,15 @@ if __name__ == '__main__':
 
     # Тест GSM
 
-    at = WIFI(show_traffic='file', **_args)
+    at = GSM(show_traffic='file', **_args)
     try:
         print(at.info())
+        
+        ''' WIFI '''
+
         #print(at.exe('+CWLAP'))
 
-        print(at.set('+CWJAP', '"Name network","password"'))
+        #print(at.set('+CWJAP', '"Name network","password"'))
 
         '''r = at.parse(at.read())
         while r and r[-1] == 'busy p...':
@@ -656,19 +683,21 @@ if __name__ == '__main__':
             print('c', r)
             r = at.parse(at.read())'''
 
-        
+        #print(at.set('+CWJAP', '"FunMan Network","WNp40p4BcY"'))
         #time.sleep(10);
 
         #at.browser_init('dosmth.ru')
         #at.browser_go('GET', '/iot.php?temp='+str(time.time()))
-        at.server_start()
+        #at.server_start()
+
+        ''' GSM '''
       
         #'AT+CUSD=1,"*100#",15\r\n')
         # получаем нолмер сервисного центра
         #at.write('AT+CSCA?')
 
-        #at.echo(1)
-        #print('-- ANSWER: ', at.at())
+        at.echo(1)
+        print('-- ANSWER: ', at.at())
         #at.echo(0)
         #print('-- ANSWER: ', at.at())
 
@@ -677,21 +706,23 @@ if __name__ == '__main__':
 
         #address = '+79998887766'
 
-        '''at.sms_setMode('pdu')
+        at.sms_setMode('pdu')
         print(at.read())
-        at.sms_setLogicMemory('SM', 'ME')
-        print(at.read())
+        #at.sms_setLogicMemory('SM', 'ME')
+        #print(at.read())
 
-        at.sms_read_all(4)
-        print(at.read())
+        #at.sms_read_all(4)
+        #print(at.read())
         #at.sms_send('  Latinica Кирилица Ё', address)
+        #at.sms_send('Пусть каждое утро станет добрым :)\nРаминь!\n\nКонстантин', '+79615151606', {'is_flash':False})
+        at.sms_send('Пусть кажд :)\nРаминь!\n\nКонстантин', '+79615151606', {'is_flash':False})
         #at.sms_setLogicMemory("MT")
-        at.list('+CMGL')
-        print(at.read())
-        at.get('+CPMS')
-        print(at.read())
+        #at.list('+CMGL')
+        #print(at.read())
+        #at.get('+CPMS')
+        #print(at.read())
 
-        time.sleep(5)'''
+        #time.sleep(5)
 
         #at.sms_setMode('text')
         #at.sms_send('  Latinica Кирилица Ё', address)
@@ -749,9 +780,6 @@ if __name__ == '__main__':
                 print(at.parse(r_text))
                 if b'0,CONNECT' in r_text:
                     at.server_send(0, '<h1>hello to all</h1><br>:-)', ['Content-Type: text/html;'])
-                    #data = "HTTP/1.1 200 OK\nContent-Type: text/html;\n\nhello\n"
-                    #print(at.send('AT+CIPSENDEX=0,'+str(len(data)+2)))
-                    #print(at.send(data, nowait=True))
 
         print('\n\n---------------\nSTOPPED')
     finally:
